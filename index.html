@@ -1,3340 +1,3645 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8">
 
-    <meta name="theme-color" content="#07111f">
-    <meta name="description"
-          content="Naol Health Scanner 3D — body visualization, posture tracking, wellness tools, and personal health tracking.">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+  >
 
-    <title>Naol Health Scanner 3D</title>
+  <meta name="theme-color" content="#07111f">
 
-    <!-- Main stylesheet -->
-    <link rel="stylesheet" href="style.css">
+  <meta
+    name="description"
+    content="Naol Health Scanner - camera tools, 3D body visualization, wellness tracking, breathing exercises, hydration and personal wellness reports."
+  >
 
-    <!-- Three.js for the 3D viewer -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.min.js"></script>
+  <title>Naol Health Scanner 3D</title>
 
-    <!-- Three.js OrbitControls -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.170.0/examples/js/controls/OrbitControls.js"></script>
+  <!-- Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
-    <!-- Face and pose tracking libraries are loaded only when needed
-         by script.js to avoid slowing down the initial page load. -->
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet"
+  >
 
-    <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <style>
+    /* =====================================================
+       NAOL HEALTH SCANNER 3D
+       Main stylesheet
+       ===================================================== */
+
+    :root {
+      --bg: #07111f;
+      --bg-secondary: #0b1728;
+      --card: rgba(17, 32, 52, 0.92);
+      --card-light: #14243a;
+
+      --text: #f4f8ff;
+      --muted: #93a8c2;
+
+      --primary: #48d9ff;
+      --primary-dark: #1596c7;
+
+      --green: #38e6a5;
+      --red: #ff6685;
+      --yellow: #ffce70;
+      --purple: #a78bfa;
+
+      --border: rgba(153, 190, 230, 0.15);
+
+      --shadow:
+        0 15px 45px rgba(0, 0, 0, 0.25);
+
+      --radius: 20px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      min-height: 100vh;
+      background:
+        radial-gradient(
+          circle at top left,
+          rgba(28, 120, 180, 0.16),
+          transparent 35%
+        ),
+        radial-gradient(
+          circle at top right,
+          rgba(99, 102, 241, 0.10),
+          transparent 30%
+        ),
+        var(--bg);
+
+      color: var(--text);
+
+      font-family: "Inter", Arial, sans-serif;
+
+      line-height: 1.6;
+
+      overflow-x: hidden;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    button:focus-visible,
+    input:focus-visible,
+    select:focus-visible,
+    textarea:focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 3px;
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .app-shell {
+      min-height: 100vh;
+      display: flex;
+    }
+
+    /* ================= SIDEBAR ================= */
+
+    .sidebar {
+      width: 255px;
+      flex-shrink: 0;
+
+      background: rgba(7, 17, 31, 0.96);
+
+      border-right: 1px solid var(--border);
+
+      padding: 24px 16px;
+
+      display: flex;
+      flex-direction: column;
+      gap: 25px;
+
+      position: sticky;
+      top: 0;
+
+      height: 100vh;
+      overflow-y: auto;
+
+      z-index: 100;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+
+      padding: 5px 7px 20px;
+
+      border-bottom: 1px solid var(--border);
+    }
+
+    .brand-logo {
+      width: 48px;
+      height: 48px;
+
+      border-radius: 15px;
+
+      display: grid;
+      place-items: center;
+
+      background:
+        linear-gradient(
+          135deg,
+          #38dfff,
+          #3478ff
+        );
+
+      color: #03101e;
+
+      font-size: 25px;
+      font-weight: 900;
+
+      box-shadow:
+        0 0 25px rgba(56, 217, 255, 0.25);
+    }
+
+    .brand h1 {
+      font-size: 17px;
+      line-height: 1.3;
+      font-weight: 800;
+    }
+
+    .brand small {
+      display: block;
+      color: var(--muted);
+      font-size: 10px;
+      margin-top: 4px;
+      letter-spacing: 1.5px;
+    }
+
+    .sidebar-label {
+      color: #7189a6;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 1.7px;
+
+      margin: 0 10px 7px;
+    }
+
+    .nav-list {
+      display: grid;
+      gap: 7px;
+    }
+
+    .nav-button {
+      width: 100%;
+
+      display: flex;
+      align-items: center;
+      gap: 12px;
+
+      text-align: left;
+
+      padding: 12px 13px;
+
+      border: 1px solid transparent;
+      border-radius: 13px;
+
+      background: transparent;
+
+      color: #a7bad1;
+
+      font-size: 13px;
+      font-weight: 600;
+
+      transition: 0.2s ease;
+    }
+
+    .nav-button:hover {
+      background: rgba(72, 217, 255, 0.08);
+      color: white;
+    }
+
+    .nav-button.active {
+      color: var(--primary);
+
+      background:
+        linear-gradient(
+          90deg,
+          rgba(72, 217, 255, 0.13),
+          rgba(72, 217, 255, 0.035)
+        );
+
+      border-color: rgba(72, 217, 255, 0.18);
+    }
+
+    .nav-icon {
+      width: 24px;
+      text-align: center;
+      font-size: 18px;
+    }
+
+    .sidebar-bottom {
+      margin-top: auto;
+
+      padding: 15px;
+
+      border: 1px solid var(--border);
+      border-radius: 16px;
+
+      background: rgba(255, 255, 255, 0.025);
+    }
+
+    .sidebar-bottom strong {
+      display: block;
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+
+    .sidebar-bottom p {
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    /* ================= MAIN ================= */
+
+    .main-content {
+      flex: 1;
+      min-width: 0;
+
+      padding: 25px 30px 45px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+
+      gap: 15px;
+
+      margin-bottom: 28px;
+    }
+
+    .topbar-title h2 {
+      font-size: clamp(22px, 3vw, 30px);
+      letter-spacing: -0.8px;
+      font-weight: 800;
+    }
+
+    .topbar-title p {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 4px;
+    }
+
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+
+      border: 1px solid var(--border);
+      border-radius: 50px;
+
+      padding: 9px 13px;
+
+      background: rgba(255, 255, 255, 0.035);
+
+      color: #b7c9dc;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+
+      border-radius: 50%;
+
+      background: var(--green);
+
+      box-shadow:
+        0 0 12px rgba(56, 230, 165, 0.6);
+    }
+
+    .menu-toggle {
+      display: none;
+
+      border: 1px solid var(--border);
+      background: var(--card);
+
+      color: white;
+
+      border-radius: 12px;
+      padding: 9px 12px;
+
+      font-size: 20px;
+    }
+
+    /* ================= GENERAL COMPONENTS ================= */
+
+    .page-section {
+      display: none;
+      animation: fadeIn 0.25s ease;
+    }
+
+    .page-section.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(5px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .section-heading {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+
+      gap: 15px;
+
+      margin-bottom: 20px;
+    }
+
+    .section-heading h3 {
+      font-size: 20px;
+      font-weight: 800;
+    }
+
+    .section-heading p {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 5px;
+    }
+
+    .card {
+      min-width: 0;
+
+      background:
+        linear-gradient(
+          145deg,
+          rgba(20, 38, 61, 0.95),
+          rgba(11, 24, 41, 0.95)
+        );
+
+      border: 1px solid var(--border);
+
+      border-radius: var(--radius);
+
+      padding: 22px;
+
+      box-shadow: var(--shadow);
+    }
+
+    .card h3,
+    .card h4 {
+      font-weight: 700;
+    }
+
+    .card p {
+      color: var(--muted);
+    }
+
+    .grid {
+      display: grid;
+      gap: 18px;
+    }
+
+    .grid-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .grid-3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .grid-4 {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .stack {
+      display: grid;
+      gap: 15px;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .small {
+      font-size: 11px;
+    }
+
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 17px 0;
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 9px;
+      align-items: center;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+
+      min-height: 42px;
+
+      border-radius: 12px;
+      padding: 10px 15px;
+
+      border: 1px solid transparent;
+
+      font-size: 12px;
+      font-weight: 700;
+
+      transition: 0.2s ease;
+    }
+
+    .btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+      filter: brightness(1.08);
+    }
+
+    .btn-primary {
+      color: #04111e;
+
+      background:
+        linear-gradient(
+          135deg,
+          #52e3ff,
+          #28b5ed
+        );
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.055);
+      color: #dce9f8;
+      border-color: var(--border);
+    }
+
+    .btn-success {
+      background: rgba(56, 230, 165, 0.13);
+      border-color: rgba(56, 230, 165, 0.25);
+      color: var(--green);
+    }
+
+    .btn-danger {
+      background: rgba(255, 102, 133, 0.12);
+      border-color: rgba(255, 102, 133, 0.25);
+      color: #ff8ba2;
+    }
+
+    .btn-warning {
+      background: rgba(255, 206, 112, 0.12);
+      border-color: rgba(255, 206, 112, 0.25);
+      color: var(--yellow);
+    }
+
+    .btn-small {
+      min-height: 34px;
+      padding: 7px 10px;
+      font-size: 11px;
+    }
+
+    .input,
+    .select,
+    .textarea {
+      width: 100%;
+
+      color: var(--text);
+
+      background: #091626;
+
+      border: 1px solid var(--border);
+      border-radius: 11px;
+
+      padding: 11px 12px;
+
+      font-size: 12px;
+    }
+
+    .input::placeholder,
+    .textarea::placeholder {
+      color: #6e829c;
+    }
+
+    .select option {
+      background: #0b1728;
+      color: white;
+    }
+
+    .textarea {
+      resize: vertical;
+      min-height: 100px;
+    }
+
+    .field {
+      display: grid;
+      gap: 7px;
+    }
+
+    .field label {
+      color: #a9bdd5;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .metric-card {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .metric-card::after {
+      content: "";
+
+      position: absolute;
+
+      width: 100px;
+      height: 100px;
+
+      border-radius: 50%;
+
+      right: -30px;
+      top: -40px;
+
+      background: rgba(72, 217, 255, 0.06);
+    }
+
+    .metric-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .metric-icon {
+      width: 38px;
+      height: 38px;
+
+      display: grid;
+      place-items: center;
+
+      background: rgba(72, 217, 255, 0.10);
+
+      border-radius: 12px;
+
+      font-size: 19px;
+    }
+
+    .metric-value {
+      font-size: 29px;
+      font-weight: 800;
+
+      letter-spacing: -1px;
+
+      margin-top: 13px;
+    }
+
+    .metric-note {
+      color: var(--muted);
+      font-size: 10px;
+      margin-top: 5px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+
+      border-radius: 50px;
+      padding: 5px 9px;
+
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .badge-blue {
+      background: rgba(72, 217, 255, 0.1);
+      color: var(--primary);
+    }
+
+    .badge-green {
+      background: rgba(56, 230, 165, 0.1);
+      color: var(--green);
+    }
+
+    .badge-yellow {
+      background: rgba(255, 206, 112, 0.1);
+      color: var(--yellow);
+    }
+
+    /* ================= DASHBOARD ================= */
+
+    .hero-card {
+      position: relative;
+      overflow: hidden;
+
+      min-height: 230px;
+
+      display: flex;
+      align-items: center;
+
+      background:
+        radial-gradient(
+          circle at 85% 45%,
+          rgba(72, 217, 255, 0.16),
+          transparent 32%
+        ),
+        linear-gradient(
+          115deg,
+          #102943,
+          #0a182b
+        );
+
+      margin-bottom: 20px;
+    }
+
+    .hero-content {
+      position: relative;
+      z-index: 2;
+
+      max-width: 650px;
+    }
+
+    .hero-kicker {
+      color: var(--primary);
+
+      text-transform: uppercase;
+
+      letter-spacing: 2px;
+
+      font-size: 10px;
+      font-weight: 800;
+
+      margin-bottom: 12px;
+    }
+
+    .hero-card h3 {
+      font-size: clamp(25px, 4vw, 36px);
+      line-height: 1.2;
+      letter-spacing: -1px;
+    }
+
+    .hero-card p {
+      max-width: 520px;
+
+      font-size: 12px;
+
+      margin: 12px 0 20px;
+    }
+
+    .hero-orb {
+      position: absolute;
+
+      width: 220px;
+      height: 220px;
+
+      right: 4%;
+      top: 10px;
+
+      border-radius: 50%;
+
+      border: 1px solid rgba(72, 217, 255, 0.20);
+
+      background:
+        radial-gradient(
+          circle,
+          rgba(72, 217, 255, 0.13),
+          rgba(72, 217, 255, 0.015) 65%,
+          transparent 70%
+        );
+
+      box-shadow:
+        0 0 65px rgba(72, 217, 255, 0.08);
+
+      pointer-events: none;
+    }
+
+    .hero-orb::before,
+    .hero-orb::after {
+      content: "";
+
+      position: absolute;
+
+      inset: 20px;
+
+      border: 1px solid rgba(72, 217, 255, 0.16);
+
+      border-radius: 50%;
+    }
+
+    .hero-orb::after {
+      inset: 45px;
+    }
+
+    .quick-action {
+      text-align: left;
+      width: 100%;
+
+      background: rgba(255, 255, 255, 0.025);
+
+      border: 1px solid var(--border);
+      border-radius: 16px;
+
+      color: var(--text);
+
+      padding: 18px;
+
+      transition: 0.2s ease;
+    }
+
+    .quick-action:hover {
+      border-color: rgba(72, 217, 255, 0.4);
+      transform: translateY(-2px);
+    }
+
+    .quick-action .qa-icon {
+      font-size: 24px;
+      display: block;
+      margin-bottom: 12px;
+    }
+
+    .quick-action strong {
+      display: block;
+      font-size: 13px;
+    }
+
+    .quick-action span:last-child {
+      color: var(--muted);
+      display: block;
+      font-size: 11px;
+      margin-top: 5px;
+    }
+
+    /* ================= CAMERA ================= */
+
+    .camera-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.6fr) minmax(260px, 0.8fr);
+      gap: 18px;
+    }
+
+    .camera-stage {
+      background: #02060b;
+
+      border: 1px solid rgba(72, 217, 255, 0.2);
+
+      border-radius: 17px;
+
+      overflow: hidden;
+
+      min-height: 280px;
+
+      position: relative;
+    }
+
+    /*
+      Important camera preview settings:
+      video must be visible and fill its container.
+    */
+
+    #cameraVideo {
+      display: block;
+
+      width: 100%;
+      height: 100%;
+
+      min-height: 280px;
+
+      aspect-ratio: 4 / 3;
+
+      object-fit: contain;
+
+      background: #02060b;
+
+      color: white;
+    }
+
+    .camera-overlay {
+      position: absolute;
+
+      inset: 0;
+
+      pointer-events: none;
+
+      border: 1px solid rgba(72, 217, 255, 0.05);
+    }
+
+    .camera-overlay::before {
+      content: "";
+
+      position: absolute;
+
+      width: 60%;
+      height: 65%;
+
+      top: 17%;
+      left: 20%;
+
+      border: 1px solid rgba(72, 217, 255, 0.5);
+
+      border-radius: 12px;
+
+      opacity: 0.4;
+    }
+
+    .camera-placeholder {
+      position: absolute;
+
+      inset: 0;
+
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      flex-direction: column;
+      gap: 10px;
+
+      background:
+        radial-gradient(
+          circle,
+          rgba(20, 65, 95, 0.35),
+          transparent 65%
+        );
+
+      color: #9eb6d1;
+
+      text-align: center;
+
+      padding: 20px;
+
+      pointer-events: none;
+    }
+
+    .camera-placeholder .placeholder-icon {
+      font-size: 40px;
+    }
+
+    .camera-placeholder strong {
+      color: white;
+      font-size: 14px;
+    }
+
+    .camera-placeholder p {
+      max-width: 300px;
+      font-size: 11px;
+    }
+
+    .camera-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 15px;
+    }
+
+    .camera-status {
+      margin-top: 13px;
+
+      font-size: 11px;
+
+      color: var(--muted);
+
+      overflow-wrap: anywhere;
+    }
+
+    #cameraCanvas,
+    #captureCanvas {
+      display: none;
+    }
+
+    .capture-gallery {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .gallery-item {
+      overflow: hidden;
+
+      background: rgba(255, 255, 255, 0.025);
+
+      border: 1px solid var(--border);
+
+      border-radius: 12px;
+    }
+
+    .gallery-item img {
+      display: block;
+
+      width: 100%;
+
+      aspect-ratio: 4 / 3;
+
+      object-fit: cover;
+
+      background: #02060b;
+    }
+
+    .gallery-item-info {
+      padding: 8px;
+    }
+
+    .gallery-item-info p {
+      font-size: 10px;
+      margin-bottom: 6px;
+    }
+
+    .gallery-item-info button {
+      margin: 2px 3px 0 0;
+    }
+
+    /* ================= 3D VIEWER ================= */
+
+    .viewer-layout {
+      display: grid;
+
+      grid-template-columns: minmax(0, 1.5fr) minmax(230px, 0.7fr);
+
+      gap: 18px;
+    }
+
+    .viewer-panel {
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    #body3DViewer,
+    #threeContainer,
+    #bodyViewer {
+      position: relative;
+
+      width: 100%;
+
+      min-height: 400px;
+
+      overflow: hidden;
+
+      border-radius: 15px;
+
+      border: 1px solid rgba(72, 217, 255, 0.15);
+
+      background:
+        radial-gradient(
+          ellipse at center,
+          #152d48 0%,
+          #091526 65%,
+          #050b14 100%
+        );
+    }
+
+    #body3DViewer canvas,
+    #threeContainer canvas,
+    #bodyViewer canvas {
+      display: block;
+
+      width: 100%;
+
+      max-width: 100%;
+    }
+
+    .viewer-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+
+      margin-bottom: 12px;
+    }
+
+    .viewer-toolbar .btn {
+      padding: 8px 11px;
+      min-height: 35px;
+      font-size: 10px;
+    }
+
+    .viewer-note {
+      font-size: 11px;
+
+      line-height: 1.8;
+
+      padding: 12px;
+
+      background: rgba(255, 206, 112, 0.055);
+
+      border: 1px solid rgba(255, 206, 112, 0.15);
+
+      border-radius: 12px;
+    }
+
+    .region-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .region-button {
+      text-align: left;
+
+      width: 100%;
+
+      padding: 12px;
+
+      color: #dce9f8;
+
+      background: rgba(255, 255, 255, 0.025);
+
+      border: 1px solid var(--border);
+
+      border-radius: 11px;
+
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .region-button:hover,
+    .region-button.active {
+      border-color: rgba(72, 217, 255, 0.35);
+      background: rgba(72, 217, 255, 0.07);
+    }
+
+    #anatomyInfo {
+      min-height: 100px;
+
+      border: 1px solid var(--border);
+
+      border-radius: 13px;
+
+      padding: 14px;
+
+      background: rgba(255, 255, 255, 0.025);
+    }
+
+    #anatomyInfo h4 {
+      color: var(--primary);
+      font-size: 13px;
+      margin-bottom: 6px;
+    }
+
+    #anatomyInfo p {
+      font-size: 11px;
+      line-height: 1.8;
+    }
+
+    /* ================= WELLNESS ================= */
+
+    .question-card {
+      border: 1px solid var(--border);
+
+      border-radius: 14px;
+
+      padding: 15px;
+
+      background: rgba(255, 255, 255, 0.025);
+    }
+
+    .question-card legend,
+    .question-title {
+      display: block;
+
+      font-size: 12px;
+
+      font-weight: 700;
+
+      margin-bottom: 12px;
+    }
+
+    .option-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .option-row {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+
+      color: #a9bdd5;
+
+      font-size: 11px;
+
+      cursor: pointer;
+    }
+
+    .option-row input {
+      accent-color: var(--primary);
+    }
+
+    .result-box {
+      border: 1px solid rgba(72, 217, 255, 0.2);
+
+      background: rgba(72, 217, 255, 0.055);
+
+      border-radius: 15px;
+
+      padding: 18px;
+    }
+
+    .result-box h4 {
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+
+    .result-box p {
+      font-size: 12px;
+      line-height: 1.8;
+    }
+
+    /* ================= HYDRATION ================= */
+
+    .water-display {
+      text-align: center;
+
+      padding: 25px 10px;
+    }
+
+    .water-icon {
+      font-size: 55px;
+      margin-bottom: 12px;
+    }
+
+    .water-number {
+      font-size: 42px;
+      font-weight: 800;
+      letter-spacing: -1px;
+    }
+
+    .progress-track {
+      width: 100%;
+      height: 10px;
+
+      background: rgba(255, 255, 255, 0.07);
+
+      border-radius: 50px;
+
+      overflow: hidden;
+
+      margin: 18px 0;
+    }
+
+    .progress-fill {
+      width: 0%;
+      height: 100%;
+
+      background:
+        linear-gradient(
+          90deg,
+          #32b8ff,
+          #48e5ff
+        );
+
+      border-radius: inherit;
+
+      transition: width 0.25s ease;
+    }
+
+    /* ================= BREATHING ================= */
+
+    .breathing-stage {
+      min-height: 300px;
+
+      display: flex;
+      flex-direction: column;
+
+      align-items: center;
+      justify-content: center;
+
+      text-align: center;
+
+      background:
+        radial-gradient(
+          circle,
+          rgba(72, 217, 255, 0.07),
+          transparent 65%
+        );
+
+      border-radius: 15px;
+    }
+
+    .breathing-orb {
+      width: 125px;
+      height: 125px;
+
+      border-radius: 50%;
+
+      display: grid;
+      place-items: center;
+
+      background:
+        radial-gradient(
+          circle at 35% 30%,
+          #8af0ff,
+          #279bd9 55%,
+          #2457a5
+        );
+
+      box-shadow:
+        0 0 40px rgba(72, 217, 255, 0.23);
+
+      color: #04111e;
+
+      font-weight: 800;
+      font-size: 12px;
+
+      margin-bottom: 22px;
+
+      transition:
+        transform 1s ease,
+        box-shadow 1s ease;
+    }
+
+    .breathing-orb.inhale {
+      transform: scale(1.25);
+
+      box-shadow:
+        0 0 70px rgba(72, 217, 255, 0.4);
+    }
+
+    .breathing-orb.exhale {
+      transform: scale(0.85);
+    }
+
+    #breathingInstruction {
+      font-size: 19px;
+      font-weight: 800;
+    }
+
+    #breathingCountdown {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 6px;
+    }
+
+    /* ================= LOGS ================= */
+
+    .log-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .log-item {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 15px;
+
+      padding: 13px;
+
+      background: rgba(255, 255, 255, 0.025);
+
+      border: 1px solid var(--border);
+
+      border-radius: 12px;
+    }
+
+    .log-item strong {
+      display: block;
+      font-size: 12px;
+    }
+
+    .log-item small {
+      color: var(--muted);
+      display: block;
+      font-size: 10px;
+      margin-top: 4px;
+    }
+
+    .empty-state {
+      text-align: center;
+
+      color: var(--muted);
+
+      padding: 30px 15px;
+
+      font-size: 12px;
+    }
+
+    /* ================= SETTINGS ================= */
+
+    .setting-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+
+      gap: 15px;
+
+      padding: 15px 0;
+
+      border-bottom: 1px solid var(--border);
+    }
+
+    .setting-row:last-child {
+      border-bottom: 0;
+    }
+
+    .setting-row strong {
+      display: block;
+      font-size: 12px;
+    }
+
+    .setting-row p {
+      font-size: 10px;
+      margin-top: 4px;
+    }
+
+    .toggle {
+      appearance: none;
+
+      width: 43px;
+      height: 24px;
+
+      flex-shrink: 0;
+
+      border-radius: 50px;
+
+      background: #34445a;
+
+      position: relative;
+
+      cursor: pointer;
+
+      transition: 0.2s ease;
+    }
+
+    .toggle::after {
+      content: "";
+
+      width: 18px;
+      height: 18px;
+
+      position: absolute;
+
+      top: 3px;
+      left: 3px;
+
+      background: white;
+
+      border-radius: 50%;
+
+      transition: 0.2s ease;
+    }
+
+    .toggle:checked {
+      background: var(--primary-dark);
+    }
+
+    .toggle:checked::after {
+      left: 22px;
+    }
+
+    /* ================= NOTIFICATIONS ================= */
+
+    #toastContainer {
+      position: fixed;
+
+      right: 18px;
+      bottom: 18px;
+
+      display: grid;
+      gap: 9px;
+
+      width: min(360px, calc(100vw - 36px));
+
+      z-index: 9999;
+
+      pointer-events: none;
+    }
+
+    .toast {
+      padding: 13px 15px;
+
+      background: #142940;
+
+      border: 1px solid rgba(72, 217, 255, 0.25);
+
+      border-radius: 13px;
+
+      color: white;
+
+      font-size: 12px;
+
+      box-shadow: var(--shadow);
+
+      animation: fadeIn 0.2s ease;
+    }
+
+    .toast.error {
+      border-color: rgba(255, 102, 133, 0.35);
+    }
+
+    .toast.success {
+      border-color: rgba(56, 230, 165, 0.35);
+    }
+
+    /* ================= FOOTER ================= */
+
+    .footer {
+      margin-top: 40px;
+      padding-top: 20px;
+
+      border-top: 1px solid var(--border);
+
+      color: #7489a3;
+
+      font-size: 10px;
+
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    /* ================= LIGHT THEME ================= */
+
+    body.light-theme {
+      --bg: #edf4fb;
+      --bg-secondary: #ffffff;
+      --card: #ffffff;
+      --card-light: #f3f7fc;
+
+      --text: #14243a;
+      --muted: #637892;
+
+      --border: rgba(26, 67, 110, 0.14);
+
+      background: #edf4fb;
+      color: var(--text);
+    }
+
+    body.light-theme .sidebar {
+      background: #f8fbff;
+    }
+
+    body.light-theme .card {
+      background: #ffffff;
+    }
+
+    body.light-theme .nav-button {
+      color: #536a84;
+    }
+
+    body.light-theme .nav-button.active {
+      color: #087eaa;
+      background: #e0f5ff;
+    }
+
+    body.light-theme .input,
+    body.light-theme .select,
+    body.light-theme .textarea {
+      color: #14243a;
+      background: #f5f8fc;
+    }
+
+    body.light-theme .select option {
+      background: white;
+      color: #14243a;
+    }
+
+    body.light-theme .setting-row strong,
+    body.light-theme .question-title,
+    body.light-theme .question-card legend {
+      color: #14243a;
+    }
+
+    body.light-theme .quick-action,
+    body.light-theme .region-button,
+    body.light-theme .question-card,
+    body.light-theme .result-box,
+    body.light-theme .log-item,
+    body.light-theme #anatomyInfo {
+      color: #14243a;
+      background: #f7faff;
+    }
+
+    body.light-theme .option-row {
+      color: #536a84;
+    }
+
+    /* ================= RESPONSIVE ================= */
+
+    @media (max-width: 1150px) {
+      .grid-4 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .grid-3 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .main-content {
+        padding: 22px;
+      }
+
+      .sidebar {
+        width: 225px;
+      }
+    }
+
+    @media (max-width: 850px) {
+      .sidebar {
+        position: fixed;
+
+        left: -270px;
+        top: 0;
+        bottom: 0;
+
+        width: 255px;
+        height: 100dvh;
+
+        transition: left 0.25s ease;
+
+        box-shadow: none;
+      }
+
+      .sidebar.open {
+        left: 0;
+
+        box-shadow:
+          15px 0 60px rgba(0, 0, 0, 0.35);
+      }
+
+      .menu-toggle {
+        display: inline-flex;
+      }
+
+      .app-shell {
+        display: block;
+      }
+
+      .main-content {
+        padding: 20px 16px 35px;
+      }
+
+      .camera-layout,
+      .viewer-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-orb {
+        right: -70px;
+        opacity: 0.6;
+      }
+
+      .topbar-title h2 {
+        font-size: 22px;
+      }
+
+      .topbar-title p {
+        font-size: 10px;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .grid-2,
+      .grid-3,
+      .grid-4 {
+        grid-template-columns: 1fr;
+      }
+
+      .topbar {
+        align-items: flex-start;
+      }
+
+      .topbar-right {
+        gap: 7px;
+      }
+
+      .status-pill {
+        padding: 7px 9px;
+        font-size: 9px;
+      }
+
+      .hero-card {
+        min-height: 250px;
+        padding: 18px;
+      }
+
+      .hero-card h3 {
+        font-size: 26px;
+      }
+
+      .hero-orb {
+        width: 150px;
+        height: 150px;
+
+        right: -55px;
+        top: 65px;
+      }
+
+      .card {
+        padding: 16px;
+      }
+
+      .metric-value {
+        font-size: 25px;
+      }
+
+      .section-heading {
+        flex-direction: column;
+      }
+
+      #body3DViewer,
+      #threeContainer,
+      #bodyViewer {
+        min-height: 330px;
+      }
+
+      .capture-gallery {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .footer {
+        flex-direction: column;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
 </head>
 
 <body>
 
-<!-- =====================================================
-     APPLICATION LOADING SCREEN
-===================================================== -->
+<div class="app-shell">
 
-<div id="app-loader" class="app-loader">
-    <div class="loader-orbit">
-        <div class="loader-core">N</div>
+  <!-- ================= SIDEBAR ================= -->
+
+  <aside class="sidebar" id="sidebar">
+
+    <div class="brand">
+      <div class="brand-logo">N</div>
+
+      <div>
+        <h1>Naol Health</h1>
+        <small>SCANNER 3D</small>
+      </div>
     </div>
 
-    <h2>NAOL HEALTH</h2>
-    <p>Preparing your wellness studio...</p>
+    <div>
+      <p class="sidebar-label">MAIN MENU</p>
 
-    <div class="loader-progress">
-        <span></span>
+      <nav class="nav-list" aria-label="Main navigation">
+
+        <button
+          class="nav-button active"
+          data-section="dashboard"
+          data-action="show-dashboard"
+          type="button"
+        >
+          <span class="nav-icon">⌂</span>
+          Dashboard
+        </button>
+
+        <button
+          class="nav-button"
+          data-section="camera"
+          data-action="show-camera"
+          type="button"
+        >
+          <span class="nav-icon">📷</span>
+          Camera Scanner
+        </button>
+
+        <button
+          class="nav-button"
+          data-section="viewer"
+          data-action="show-viewer"
+          type="button"
+        >
+          <span class="nav-icon">🧍</span>
+          3D Body Viewer
+        </button>
+
+        <button
+          class="nav-button"
+          data-section="wellness"
+          data-action="show-wellness"
+          type="button"
+        >
+          <span class="nav-icon">🩺</span>
+          Wellness Check
+        </button>
+
+        <button
+          class="nav-button"
+          data-section="breathing"
+          data-action="show-breathing"
+          type="button"
+        >
+          <span class="nav-icon">🫁</span>
+          Breathing Exercise
+        </button>
+
+        <button
+          class="nav-button"
+          data-section="hydration"
+          data-action="show-hydration"
+          type="button"
+        >
+          <span class="nav-icon">💧</span>
+          Hydration
+        </button>
+
+        <button
+          class="nav-button"
+          data-section="diary"
+          data-action="show-diary"
+          type="button"
+        >
+          <span class="nav-icon">📔</span>
+          Mood & Sleep Diary
+        </button>
+
+        <button
+          class="nav-button"
+          data-section="reports"
+          data-action="show-reports"
+          type="button"
+        >
+          <span class="nav-icon">📋</span>
+          My Reports
+        </button>
+
+      </nav>
     </div>
-</div>
 
+    <div>
+      <p class="sidebar-label">PREFERENCES</p>
 
-<!-- =====================================================
-     MAIN APPLICATION
-===================================================== -->
+      <nav class="nav-list">
 
-<div id="app" class="app-shell">
+        <button
+          class="nav-button"
+          data-section="settings"
+          data-action="show-settings"
+          type="button"
+        >
+          <span class="nav-icon">⚙️</span>
+          Settings
+        </button>
 
-    <!-- MOBILE SIDEBAR BACKDROP -->
-    <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
+      </nav>
+    </div>
 
+    <div class="sidebar-bottom">
+      <strong>ⓘ Wellness Information</strong>
+
+      <p>
+        This website provides general wellness tools.
+        It does not diagnose medical conditions.
+      </p>
+    </div>
+
+  </aside>
+
+  <!-- ================= MAIN CONTENT ================= -->
+
+  <main class="main-content">
+
+    <!-- TOP BAR -->
+
+    <header class="topbar">
+
+      <div style="display:flex;align-items:center;gap:12px;">
+
+        <button
+          class="menu-toggle"
+          id="menuToggle"
+          type="button"
+          aria-label="Open navigation menu"
+        >
+          ☰
+        </button>
+
+        <div class="topbar-title">
+          <h2 id="pageTitle">Dashboard</h2>
+
+          <p id="pageSubtitle">
+            Your personal wellness workspace
+          </p>
+        </div>
+
+      </div>
+
+      <div class="topbar-right">
+
+        <div class="status-pill">
+          <span class="status-dot"></span>
+          <span id="systemStatus">System Ready</span>
+        </div>
+
+        <button
+          class="btn btn-secondary btn-small"
+          id="themeToggle"
+          type="button"
+          aria-label="Toggle theme"
+        >
+          ◐ Theme
+        </button>
+
+      </div>
+
+    </header>
 
     <!-- =================================================
-         SIDEBAR
-    ================================================== -->
+         DASHBOARD
+         ================================================= -->
 
-    <aside id="sidebar" class="sidebar">
+    <section
+      id="dashboard"
+      class="page-section active"
+      data-page="dashboard"
+    >
 
-        <div class="brand">
-            <div class="brand-logo">
-                <span class="brand-logo-inner">N</span>
-                <span class="brand-logo-orbit"></span>
+      <div class="hero-card card">
+
+        <div class="hero-content">
+
+          <p class="hero-kicker">
+            NAOL HEALTH SCANNER 3D
+          </p>
+
+          <h3>
+            Understand your<br>
+            wellness journey.
+          </h3>
+
+          <p>
+            Explore your camera tools, illustrative 3D body
+            viewer, daily hydration, breathing exercises and
+            personal wellness records in one place.
+          </p>
+
+          <div class="button-row">
+
+            <button
+              class="btn btn-primary"
+              data-section="camera"
+              data-action="show-camera"
+              type="button"
+            >
+              📷 Open Camera
+            </button>
+
+            <button
+              class="btn btn-secondary"
+              data-section="viewer"
+              data-action="show-viewer"
+              type="button"
+            >
+              🧍 Open 3D Viewer
+            </button>
+
+          </div>
+
+        </div>
+
+        <div class="hero-orb" aria-hidden="true"></div>
+
+      </div>
+
+      <div class="grid grid-4" style="margin-bottom:22px;">
+
+        <div class="card metric-card">
+
+          <div class="metric-top">
+            <span>Photos Captured</span>
+            <span class="metric-icon">📷</span>
+          </div>
+
+          <div class="metric-value" id="totalPhotos">0</div>
+
+          <p class="metric-note">
+            Photos saved in this browser
+          </p>
+
+        </div>
+
+        <div class="card metric-card">
+
+          <div class="metric-top">
+            <span>Water Today</span>
+            <span class="metric-icon">💧</span>
+          </div>
+
+          <div class="metric-value">
+            <span id="dashboardWater">0</span>
+            <span style="font-size:13px;">ml</span>
+          </div>
+
+          <p class="metric-note">
+            Your recorded water intake
+          </p>
+
+        </div>
+
+        <div class="card metric-card">
+
+          <div class="metric-top">
+            <span>Wellness Checks</span>
+            <span class="metric-icon">🩺</span>
+          </div>
+
+          <div class="metric-value" id="totalChecks">0</div>
+
+          <p class="metric-note">
+            Self-check records completed
+          </p>
+
+        </div>
+
+        <div class="card metric-card">
+
+          <div class="metric-top">
+            <span>Diary Entries</span>
+            <span class="metric-icon">📔</span>
+          </div>
+
+          <div class="metric-value" id="totalDiaryEntries">0</div>
+
+          <p class="metric-note">
+            Mood and sleep records
+          </p>
+
+        </div>
+
+      </div>
+
+      <div class="section-heading">
+        <div>
+          <h3>Quick Actions</h3>
+          <p>Choose a tool to get started.</p>
+        </div>
+      </div>
+
+      <div class="grid grid-3" style="margin-bottom:25px;">
+
+        <button
+          class="quick-action"
+          data-section="camera"
+          data-action="show-camera"
+          type="button"
+        >
+          <span class="qa-icon">📸</span>
+          <strong>Camera Scanner</strong>
+          <span>Open camera and capture photos.</span>
+        </button>
+
+        <button
+          class="quick-action"
+          data-section="viewer"
+          data-action="show-viewer"
+          type="button"
+        >
+          <span class="qa-icon">🧍</span>
+          <strong>3D Body Viewer</strong>
+          <span>Explore an illustrative body model.</span>
+        </button>
+
+        <button
+          class="quick-action"
+          data-section="wellness"
+          data-action="show-wellness"
+          type="button"
+        >
+          <span class="qa-icon">🩺</span>
+          <strong>Wellness Check</strong>
+          <span>Complete a general wellness questionnaire.</span>
+        </button>
+
+        <button
+          class="quick-action"
+          data-section="breathing"
+          data-action="show-breathing"
+          type="button"
+        >
+          <span class="qa-icon">🫁</span>
+          <strong>Breathing Exercise</strong>
+          <span>Follow a guided breathing session.</span>
+        </button>
+
+        <button
+          class="quick-action"
+          data-section="hydration"
+          data-action="show-hydration"
+          type="button"
+        >
+          <span class="qa-icon">💧</span>
+          <strong>Hydration Tracker</strong>
+          <span>Record the water you drink.</span>
+        </button>
+
+        <button
+          class="quick-action"
+          data-section="reports"
+          data-action="show-reports"
+          type="button"
+        >
+          <span class="qa-icon">📋</span>
+          <strong>Wellness Reports</strong>
+          <span>Review and export your records.</span>
+        </button>
+
+      </div>
+
+      <div class="grid grid-2">
+
+        <div class="card">
+
+          <div class="section-heading">
+            <div>
+              <h3>Recent Activity</h3>
+              <p>Your latest saved records.</p>
+            </div>
+          </div>
+
+          <div id="recentActivity" class="log-list">
+            <div class="empty-state">
+              Your recent activity will appear here.
+            </div>
+          </div>
+
+        </div>
+
+        <div class="card">
+
+          <h3 style="margin-bottom:10px;">
+            Important Information
+          </h3>
+
+          <p style="font-size:12px;line-height:1.9;">
+            Naol Health Scanner is a personal wellness
+            website. Its 3D body is an illustrative model,
+            not a medical scan. Camera photos cannot diagnose
+            illness, measure internal organs or determine
+            your health status automatically.
+          </p>
+
+          <div class="divider"></div>
+
+          <span class="badge badge-blue">
+            Personal Wellness Tools
+          </span>
+
+          <span class="badge badge-yellow">
+            Not a Medical Diagnosis
+          </span>
+
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- =================================================
+         CAMERA SCANNER
+         ================================================= -->
+
+    <section
+      id="camera"
+      class="page-section"
+      data-page="camera"
+    >
+
+      <div class="section-heading">
+
+        <div>
+          <h3>Camera Scanner</h3>
+
+          <p>
+            Open your device camera, capture photos and manage
+            your local photo gallery.
+          </p>
+        </div>
+
+        <span class="badge badge-blue">
+          Camera Tools
+        </span>
+
+      </div>
+
+      <div class="camera-layout">
+
+        <!-- CAMERA PANEL -->
+
+        <div class="card">
+
+          <div class="section-heading">
+            <div>
+              <h3>Live Camera</h3>
+              <p>Allow camera permission when prompted.</p>
+            </div>
+          </div>
+
+          <div class="camera-stage" id="cameraStage">
+
+            <video
+              id="cameraVideo"
+              autoplay
+              muted
+              playsinline
+              webkit-playsinline
+              aria-label="Live camera preview"
+            ></video>
+
+            <div
+              class="camera-placeholder"
+              id="cameraPlaceholder"
+            >
+              <span class="placeholder-icon">📷</span>
+
+              <strong>Camera is not active</strong>
+
+              <p>
+                Press Start Camera and allow permission
+                to see the live preview.
+              </p>
             </div>
 
-            <div class="brand-copy">
-                <h1>NAOL<span> HEALTH</span></h1>
-                <p>SCANNER 3D</p>
+            <div
+              class="camera-overlay"
+              aria-hidden="true"
+            ></div>
+
+          </div>
+
+          <!-- Canvas used to capture frames -->
+
+          <canvas
+            id="cameraCanvas"
+            aria-hidden="true"
+          ></canvas>
+
+          <canvas
+            id="captureCanvas"
+            aria-hidden="true"
+          ></canvas>
+
+          <div class="camera-controls">
+
+            <button
+              class="btn btn-primary"
+              id="startCamera"
+              data-action="start-camera"
+              type="button"
+            >
+              ▶ Start Camera
+            </button>
+
+            <button
+              class="btn btn-secondary"
+              id="stopCamera"
+              data-action="stop-camera"
+              type="button"
+            >
+              ■ Stop Camera
+            </button>
+
+            <button
+              class="btn btn-secondary"
+              id="switchCamera"
+              data-action="switch-camera"
+              type="button"
+            >
+              🔄 Switch Camera
+            </button>
+
+            <button
+              class="btn btn-success"
+              id="capturePhoto"
+              data-action="capture-photo"
+              type="button"
+            >
+              📸 Capture Photo
+            </button>
+
+          </div>
+
+          <p
+            class="camera-status"
+            id="cameraStatus"
+            role="status"
+            aria-live="polite"
+          >
+            Camera is waiting to start.
+          </p>
+
+          <div class="divider"></div>
+
+          <div class="button-row">
+
+            <button
+              class="btn btn-secondary"
+              id="startScan"
+              data-action="start-scan"
+              type="button"
+            >
+              🔍 Start Scan Session
+            </button>
+
+            <button
+              class="btn btn-secondary"
+              id="stopScan"
+              data-action="stop-scan"
+              type="button"
+            >
+              Finish Scan
+            </button>
+
+          </div>
+
+          <p
+            class="muted small"
+            style="margin-top:12px;"
+          >
+            A scan session can organize photos from different
+            viewing angles. It does not create a medically
+            accurate scan or a real 3D reconstruction.
+          </p>
+
+        </div>
+
+        <!-- PHOTO GALLERY -->
+
+        <div class="card">
+
+          <div class="section-heading">
+
+            <div>
+              <h3>Photo Gallery</h3>
+              <p>Photos saved in this browser.</p>
+            </div>
+
+            <span
+              class="badge badge-blue"
+              id="galleryCount"
+            >
+              0 photos
+            </span>
+
+          </div>
+
+          <div
+            id="captureGallery"
+            class="capture-gallery"
+          >
+
+            <div
+              class="empty-state"
+              id="galleryEmpty"
+              style="grid-column:1/-1;"
+            >
+              No photos captured yet.
+            </div>
+
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="button-row">
+
+            <button
+              class="btn btn-secondary"
+              id="downloadAllPhotos"
+              data-action="download-all-photos"
+              type="button"
+            >
+              ⬇ Download Photos
+            </button>
+
+            <button
+              class="btn btn-danger"
+              id="clearGallery"
+              data-action="clear-gallery"
+              type="button"
+            >
+              Clear Gallery
+            </button>
+
+          </div>
+
+          <p class="muted small" style="margin-top:12px;">
+            Browser storage is limited. Download important
+            photos before clearing website data.
+          </p>
+
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- =================================================
+         3D BODY VIEWER
+         ================================================= -->
+
+    <section
+      id="viewer"
+      class="page-section"
+      data-page="viewer"
+    >
+
+      <div class="section-heading">
+
+        <div>
+          <h3>3D Body Viewer</h3>
+
+          <p>
+            Explore an illustrative human body model.
+          </p>
+        </div>
+
+        <span class="badge badge-blue">
+          Interactive 3D
+        </span>
+
+      </div>
+
+      <div class="viewer-layout">
+
+        <div class="card viewer-panel">
+
+          <div class="section-heading">
+            <div>
+              <h3>Human Body Model</h3>
+
+              <p>
+                Drag to rotate and use the viewing controls.
+              </p>
+            </div>
+          </div>
+
+          <div class="viewer-toolbar">
+
+            <button
+              class="btn btn-secondary"
+              id="viewFront"
+              data-view="front"
+              data-action="view-front"
+              type="button"
+            >
+              Front
+            </button>
+
+            <button
+              class="btn btn-secondary"
+              id="viewBack"
+              data-view="back"
+              data-action="view-back"
+              type="button"
+            >
+              Back
+            </button>
+
+            <button
+              class="btn btn-secondary"
+              id="viewLeft"
+              data-view="left"
+              data-action="view-left"
+              type="button"
+            >
+              Left
+            </button>
+
+            <button
+              class="btn btn-secondary"
+              id="viewRight"
+              data-view="right"
+              data-action="view-right"
+              type="button"
+            >
+              Right
+            </button>
+
+            <button
+              class="btn btn-secondary"
+              id="viewTop"
+              data-view="top"
+              data-action="view-top"
+              type="button"
+            >
+              Top
+            </button>
+
+            <button
+              class="btn btn-secondary"
+              id="reset3D"
+              data-action="reset-3d"
+              type="button"
+            >
+              Reset View
+            </button>
+
+          </div>
+
+          <div
+            id="body3DViewer"
+            aria-label="Interactive illustrative 3D body viewer"
+          ></div>
+
+          <div class="viewer-toolbar" style="margin-top:13px;">
+
+            <button
+              class="btn btn-secondary"
+              id="autoRotate"
+              data-action="auto-rotate"
+              type="button"
+            >
+              ↻ Auto Rotate
+            </button>
+
+            <button
+              class="btn btn-secondary"
+              id="toggleSkeleton"
+              data-action="toggle-skeleton"
+              type="button"
+            >
+              Show Skeleton
+            </button>
+
+            <button
+              class="btn btn-secondary"
+              id="toggleGrid"
+              data-action="toggle-grid"
+              type="button"
+            >
+              Toggle Grid
+            </button>
+
+          </div>
+
+          <div class="viewer-note">
+            <strong>Important:</strong>
+            This is a visual 3D model for educational
+            exploration. It is not generated from your body,
+            camera images or medical records.
+          </div>
+
+        </div>
+
+        <div class="card">
+
+          <div class="section-heading">
+            <div>
+              <h3>Body Regions</h3>
+              <p>Select a region to read general information.</p>
+            </div>
+          </div>
+
+          <div class="region-list">
+
+            <button
+              class="region-button"
+              data-region="head"
+              data-action="region-head"
+              type="button"
+            >
+              🧠 Head
+            </button>
+
+            <button
+              class="region-button"
+              data-region="neck"
+              data-action="region-neck"
+              type="button"
+            >
+              Neck
+            </button>
+
+            <button
+              class="region-button"
+              data-region="chest"
+              data-action="region-chest"
+              type="button"
+            >
+              🫁 Chest
+            </button>
+
+            <button
+              class="region-button"
+              data-region="abdomen"
+              data-action="region-abdomen"
+              type="button"
+            >
+              Abdomen
+            </button>
+
+            <button
+              class="region-button"
+              data-region="back"
+              data-action="region-back"
+              type="button"
+            >
+              Back
+            </button>
+
+            <button
+              class="region-button"
+              data-region="arms"
+              data-action="region-arms"
+              type="button"
+            >
+              💪 Arms
+            </button>
+
+            <button
+              class="region-button"
+              data-region="legs"
+              data-action="region-legs"
+              type="button"
+            >
+              🦵 Legs
+            </button>
+
+          </div>
+
+          <div class="divider"></div>
+
+          <div id="anatomyInfo">
+
+            <h4>Body Region Information</h4>
+
+            <p>
+              Select a body region above to view general
+              educational information.
+            </p>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- =================================================
+         WELLNESS CHECK
+         ================================================= -->
+
+    <section
+      id="wellness"
+      class="page-section"
+      data-page="wellness"
+    >
+
+      <div class="section-heading">
+
+        <div>
+          <h3>Wellness Self-Check</h3>
+
+          <p>
+            Answer the questions to create a personal
+            wellness reflection.
+          </p>
+        </div>
+
+        <span class="badge badge-blue">
+          Self-Assessment
+        </span>
+
+      </div>
+
+      <div class="grid grid-2">
+
+        <div class="card">
+
+          <form id="wellnessForm">
+
+            <div class="stack">
+
+              <fieldset class="question-card">
+
+                <legend>
+                  1. How would you describe your energy today?
+                </legend>
+
+                <div class="option-list">
+
+                  <label class="option-row">
+                    <input
+                      type="radio"
+                      name="energy"
+                      value="high"
+                      required
+                    >
+                    High energy
+                  </label>
+
+                  <label class="option-row">
+                    <input
+                      type="radio"
+                      name="energy"
+                      value="normal"
+                    >
+                    Normal energy
+                  </label>
+
+                  <label class="option-row">
+                    <input
+                      type="radio"
+                      name="energy"
+                      value="low"
+                    >
+                    Low energy
+                  </label>
+
+                </div>
+
+              </fieldset>
+
+              <fieldset class="question-card">
+
+                <legend>
+                  2. How was your sleep last night?
+                </legend>
+
+                <div class="option-list">
+
+                  <label class="option-row">
+                    <input
+                      type="radio"
+                      name="sleep"
+                      value="good"
+                      required
+                    >
+                    Good
+                  </label>
+
+                  <label class="option-row">
+                    <input
+                      type="radio"
+                      name="sleep"
+                      value="average"
+                    >
+                    Average
+                  </label>
+
+                  <label class="option-row">
+                    <input
+                      type="radio"
+                      name="sleep"
+                      value="poor"
+                    >
+                    Poor
+                  </label>
+
+                </div>
+
+              </fieldset>
+
+              <fieldset class="question-card">
+
+                <legend>
+                  3. How would you describe your mood?
+                </legend>
+
+                <div class="option-list">
+
+                  <label class="option-row">
+                    <input
+                      type="radio"
+                      name="mood"
+                      value="good"
+                      required
+                    >
+                    Good
+                  </label>
+
+                  <label class="option-row">
+                    <input
+                      type="radio"
+                      name="mood"
+                      value="okay"
+                    >
+                    Okay
+                  </label>
+
+                  <label class="option-row">
+                    <input
+                      type="radio"
+                      name="mood"
+                      value="low"
+                    >
+                    Low
+                  </label>
+
+                </div>
+
+              </fieldset>
+
+              <fieldset class="question-card">
+
+                <legend>
+                  4. How active have you been today?
+                </legend>
+
+                <div class="option-list">
+
+                  <label class="option-row">
+                    <input
+                      type="radio"
+                      name="activity"
+                      value="active"
+                      required
+                    >
+                    Active
+                  </label>
+
+                  <label class="option-row">
+                    <input
+                      type="radio"
+                      name="activity"
+                      value="some"
+                    >
+                    Some activity
+                  </label>
+
+                  <label class="option-row">
+                    <input
+                      type="radio"
+                      name="activity"
+                      value="little"
+                    >
+                    Very little activity
+                  </label>
+
+                </div>
+
+              </fieldset>
+
+              <fieldset class="question-card">
+
+                <legend>
+                  5. Have you been drinking water regularly?
+                </legend>
+
+                <div class="option-list">
+
+                  <label class="option-row">
+                    <input
+                      type="radio"
+                      name="water"
+                      value="yes"
+                      required
+                    >
+                    Yes
+                  </label>
+
+                  <label class="option-row">
+                    <input
+                      type="radio"
+                      name="water"
+                      value="sometimes"
+                    >
+                    Sometimes
+                  </label>
+
+                  <label class="option-row">
+                    <input
+                      type="radio"
+                      name="water"
+                      value="no"
+                    >
+                    No
+                  </label>
+
+                </div>
+
+              </fieldset>
+
+              <div class="field">
+
+                <label for="wellnessNotes">
+                  Additional notes (optional)
+                </label>
+
+                <textarea
+                  class="textarea"
+                  id="wellnessNotes"
+                  name="notes"
+                  placeholder="Write anything you would like to record..."
+                ></textarea>
+
+              </div>
+
+              <button
+                class="btn btn-primary"
+                id="submitWellness"
+                type="submit"
+              >
+                Complete Wellness Check
+              </button>
+
+            </div>
+
+          </form>
+
+        </div>
+
+        <div class="card">
+
+          <h3 style="margin-bottom:12px;">
+            Your Wellness Reflection
+          </h3>
+
+          <div
+            id="wellnessResult"
+            class="result-box"
+            aria-live="polite"
+          >
+
+            <h4>Ready when you are</h4>
+
+            <p>
+              Complete the questionnaire to generate a
+              general wellness reflection.
+            </p>
+
+          </div>
+
+          <div class="divider"></div>
+
+          <h4 style="margin-bottom:8px;">
+            Recent Self-Checks
+          </h4>
+
+          <div
+            id="wellnessHistory"
+            class="log-list"
+          >
+
+            <div class="empty-state">
+              No self-checks recorded yet.
+            </div>
+
+          </div>
+
+          <p class="muted small" style="margin-top:15px;">
+            This questionnaire is not a diagnostic test and
+            cannot determine whether you have a disease.
+          </p>
+
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- =================================================
+         BREATHING EXERCISE
+         ================================================= -->
+
+    <section
+      id="breathing"
+      class="page-section"
+      data-page="breathing"
+    >
+
+      <div class="section-heading">
+
+        <div>
+          <h3>Breathing Exercise</h3>
+
+          <p>
+            Take a moment for a gentle, guided breathing session.
+          </p>
+        </div>
+
+        <span class="badge badge-green">
+          60-Second Session
+        </span>
+
+      </div>
+
+      <div class="grid grid-2">
+
+        <div class="card">
+
+          <div class="breathing-stage">
+
+            <div
+              class="breathing-orb"
+              id="breathingOrb"
+            >
+              BREATHE
+            </div>
+
+            <h3 id="breathingInstruction">
+              Ready to begin?
+            </h3>
+
+            <p id="breathingCountdown">
+              60 seconds
+            </p>
+
+          </div>
+
+          <div class="button-row" style="justify-content:center;">
+
+            <button
+              class="btn btn-primary"
+              id="startBreathing"
+              data-action="start-breathing"
+              type="button"
+            >
+              ▶ Start Exercise
+            </button>
+
+            <button
+              class="btn btn-secondary"
+              id="stopBreathing"
+              data-action="stop-breathing"
+              type="button"
+            >
+              Stop
+            </button>
+
+          </div>
+
+        </div>
+
+        <div class="card">
+
+          <h3 style="margin-bottom:15px;">
+            How to Use
+          </h3>
+
+          <div class="stack">
+
+            <div class="log-item">
+              <div>
+                <strong>1. Find a comfortable position</strong>
+                <small>
+                  Sit comfortably and relax your shoulders.
+                </small>
+              </div>
+            </div>
+
+            <div class="log-item">
+              <div>
+                <strong>2. Follow the animation</strong>
+                <small>
+                  Breathe gently without forcing your breath.
+                </small>
+              </div>
+            </div>
+
+            <div class="log-item">
+              <div>
+                <strong>3. Stop if uncomfortable</strong>
+                <small>
+                  Return to normal breathing if you feel dizzy.
+                </small>
+              </div>
+            </div>
+
+          </div>
+
+          <div class="divider"></div>
+
+          <p style="font-size:12px;line-height:1.9;">
+            This exercise is for general relaxation.
+            It is not a treatment for breathing problems.
+            If you experience severe difficulty breathing,
+            seek urgent medical assistance.
+          </p>
+
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- =================================================
+         HYDRATION
+         ================================================= -->
+
+    <section
+      id="hydration"
+      class="page-section"
+      data-page="hydration"
+    >
+
+      <div class="section-heading">
+
+        <div>
+          <h3>Hydration Tracker</h3>
+
+          <p>
+            Record your water intake throughout the day.
+          </p>
+        </div>
+
+        <span class="badge badge-blue">
+          Daily Tracker
+        </span>
+
+      </div>
+
+      <div class="grid grid-2">
+
+        <div class="card">
+
+          <div class="water-display">
+
+            <div class="water-icon">💧</div>
+
+            <div class="water-number">
+              <span id="waterAmount">0</span>
+              <span style="font-size:16px;">ml</span>
+            </div>
+
+            <p style="margin-top:5px;">
+              Water recorded today
+            </p>
+
+            <div class="progress-track">
+              <div
+                class="progress-fill"
+                id="waterProgress"
+              ></div>
+            </div>
+
+            <p class="muted small">
+              Daily reference goal:
+              <strong id="waterGoalText">2000 ml</strong>
+            </p>
+
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="button-row" style="justify-content:center;">
+
+            <button
+              class="btn btn-primary"
+              id="addWater"
+              data-action="add-water"
+              type="button"
+            >
+              + 250 ml
+            </button>
+
+            <button
+              class="btn btn-secondary"
+              id="addWater500"
+              data-action="add-water-500"
+              type="button"
+            >
+              + 500 ml
+            </button>
+
+            <button
+              class="btn btn-danger"
+              id="resetWater"
+              data-action="reset-water"
+              type="button"
+            >
+              Reset Today
+            </button>
+
+          </div>
+
+        </div>
+
+        <div class="card">
+
+          <h3 style="margin-bottom:15px;">
+            Hydration Settings
+          </h3>
+
+          <div class="field">
+
+            <label for="waterGoal">
+              Daily reference goal (ml)
+            </label>
+
+            <input
+              class="input"
+              id="waterGoal"
+              type="number"
+              min="250"
+              max="10000"
+              step="250"
+              value="2000"
+            >
+
+          </div>
+
+          <button
+            class="btn btn-primary"
+            id="saveWaterGoal"
+            data-action="save-water-goal"
+            type="button"
+            style="margin-top:13px;"
+          >
+            Save Goal
+          </button>
+
+          <div class="divider"></div>
+
+          <h4 style="margin-bottom:8px;">
+            General Reminder
+          </h4>
+
+          <p style="font-size:12px;line-height:1.9;">
+            Individual water needs vary with activity,
+            climate, diet and health. This reference goal
+            is not a medical recommendation for everyone.
+            Follow your clinician's advice if you have a
+            condition that affects fluid intake.
+          </p>
+
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- =================================================
+         MOOD AND SLEEP DIARY
+         ================================================= -->
+
+    <section
+      id="diary"
+      class="page-section"
+      data-page="diary"
+    >
+
+      <div class="section-heading">
+
+        <div>
+          <h3>Mood & Sleep Diary</h3>
+
+          <p>
+            Keep a private record of your mood, sleep and notes.
+          </p>
+        </div>
+
+        <span class="badge badge-blue">
+          Personal Journal
+        </span>
+
+      </div>
+
+      <div class="grid grid-2">
+
+        <div class="card">
+
+          <h3 style="margin-bottom:16px;">
+            Create Diary Entry
+          </h3>
+
+          <form id="diaryForm">
+
+            <div class="stack">
+
+              <div class="field">
+
+                <label for="diaryDate">
+                  Date
+                </label>
+
+                <input
+                  class="input"
+                  id="diaryDate"
+                  type="date"
+                  required
+                >
+
+              </div>
+
+              <div class="field">
+
+                <label for="diaryMood">
+                  How are you feeling?
+                </label>
+
+                <select
+                  class="select"
+                  id="diaryMood"
+                  required
+                >
+                  <option value="">Choose your mood</option>
+                  <option value="Happy">😊 Happy</option>
+                  <option value="Calm">😌 Calm</option>
+                  <option value="Neutral">😐 Neutral</option>
+                  <option value="Stressed">😣 Stressed</option>
+                  <option value="Sad">😔 Sad</option>
+                  <option value="Tired">😴 Tired</option>
+                </select>
+
+              </div>
+
+              <div class="field">
+
+                <label for="sleepHours">
+                  Sleep duration (hours)
+                </label>
+
+                <input
+                  class="input"
+                  id="sleepHours"
+                  type="number"
+                  min="0"
+                  max="24"
+                  step="0.5"
+                  placeholder="e.g. 7.5"
+                  required
+                >
+
+              </div>
+
+              <div class="field">
+
+                <label for="diaryNotes">
+                  Notes
+                </label>
+
+                <textarea
+                  class="textarea"
+                  id="diaryNotes"
+                  placeholder="How was your day?"
+                ></textarea>
+
+              </div>
+
+              <button
+                class="btn btn-primary"
+                id="saveDiary"
+                type="submit"
+              >
+                Save Diary Entry
+              </button>
+
+            </div>
+
+          </form>
+
+        </div>
+
+        <div class="card">
+
+          <div class="section-heading">
+
+            <div>
+              <h3>Diary History</h3>
+              <p>Your saved journal entries.</p>
+            </div>
+
+          </div>
+
+          <div
+            id="diaryHistory"
+            class="log-list"
+          >
+
+            <div class="empty-state">
+              Your saved diary entries will appear here.
+            </div>
+
+          </div>
+
+          <div class="divider"></div>
+
+          <button
+            class="btn btn-secondary"
+            id="exportDiary"
+            data-action="export-diary"
+            type="button"
+          >
+            ⬇ Export Diary
+          </button>
+
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- =================================================
+         REPORTS
+         ================================================= -->
+
+    <section
+      id="reports"
+      class="page-section"
+      data-page="reports"
+    >
+
+      <div class="section-heading">
+
+        <div>
+          <h3>My Wellness Reports</h3>
+
+          <p>
+            Create a text report from the information
+            recorded in this browser.
+          </p>
+        </div>
+
+        <span class="badge badge-blue">
+          Personal Records
+        </span>
+
+      </div>
+
+      <div class="grid grid-2">
+
+        <div class="card">
+
+          <h3 style="margin-bottom:12px;">
+            Generate Report
+          </h3>
+
+          <p style="font-size:12px;line-height:1.9;">
+            Generate a report containing the information
+            available to the website, such as captured
+            photo counts, hydration records, wellness
+            questionnaires and diary entries.
+          </p>
+
+          <div class="divider"></div>
+
+          <div class="button-row">
+
+            <button
+              class="btn btn-primary"
+              id="generateReport"
+              data-action="generate-report"
+              type="button"
+            >
+              Generate Report
+            </button>
+
+            <button
+              class="btn btn-secondary"
+              id="downloadReport"
+              data-action="download-report"
+              type="button"
+            >
+              ⬇ Download Report
+            </button>
+
+          </div>
+
+        </div>
+
+        <div class="card">
+
+          <h3 style="margin-bottom:12px;">
+            Report Information
+          </h3>
+
+          <p style="font-size:12px;line-height:1.9;">
+            Reports summarize user-entered and browser-saved
+            information. They do not contain laboratory
+            results, internal body measurements, verified
+            diagnoses or information that the website has
+            not actually collected.
+          </p>
+
+        </div>
+
+      </div>
+
+      <div class="card" style="margin-top:18px;">
+
+        <div class="section-heading">
+
+          <div>
+            <h3>Report Preview</h3>
+            <p>Review the generated text before downloading.</p>
+          </div>
+
+        </div>
+
+        <textarea
+          class="textarea"
+          id="reportOutput"
+          style="min-height:300px;"
+          readonly
+          placeholder="Your report will appear here after you press Generate Report."
+        ></textarea>
+
+      </div>
+
+    </section>
+
+    <!-- =================================================
+         SETTINGS
+         ================================================= -->
+
+    <section
+      id="settings"
+      class="page-section"
+      data-page="settings"
+    >
+
+      <div class="section-heading">
+
+        <div>
+          <h3>Settings</h3>
+
+          <p>
+            Customize the appearance and manage local data.
+          </p>
+        </div>
+
+        <span class="badge badge-blue">
+          Preferences
+        </span>
+
+      </div>
+
+      <div class="grid grid-2">
+
+        <div class="card">
+
+          <h3 style="margin-bottom:12px;">
+            Appearance
+          </h3>
+
+          <div class="setting-row">
+
+            <div>
+              <strong>Light / Dark Theme</strong>
+
+              <p>
+                Change the website appearance.
+              </p>
             </div>
 
             <button
-                id="sidebar-close"
-                class="icon-button sidebar-close"
-                type="button"
-                aria-label="Close navigation">
-                ✕
-            </button>
-        </div>
-
-
-        <div class="sidebar-status">
-            <span class="status-indicator"></span>
-            <span>WELLNESS STUDIO</span>
-            <span class="status-version">V1.0</span>
-        </div>
-
-
-        <div class="nav-label">WORKSPACE</div>
-
-        <nav class="main-navigation" aria-label="Main navigation">
-
-            <button class="nav-item active"
-                    data-page="dashboard"
-                    type="button">
-                <span class="nav-icon">◈</span>
-                <span>Overview</span>
+              class="btn btn-secondary btn-small"
+              id="settingsThemeToggle"
+              data-action="toggle-theme"
+              type="button"
+            >
+              Toggle Theme
             </button>
 
-            <button class="nav-item"
-                    data-page="body-scanner"
-                    type="button">
-                <span class="nav-icon">♙</span>
-                <span>3D Body Scanner</span>
-                <span class="nav-badge">3D</span>
-            </button>
+          </div>
 
-            <button class="nav-item"
-                    data-page="posture"
-                    type="button">
-                <span class="nav-icon">↕</span>
-                <span>Posture Studio</span>
-            </button>
+          <div class="setting-row">
 
-            <button class="nav-item"
-                    data-page="measurements"
-                    type="button">
-                <span class="nav-icon">⌗</span>
-                <span>Measurements</span>
-            </button>
+            <div>
+              <strong>Scan Sound</strong>
 
-            <button class="nav-item"
-                    data-page="anatomy"
-                    type="button">
-                <span class="nav-icon">♧</span>
-                <span>3D Anatomy Lab</span>
-            </button>
-
-
-            <div class="nav-label">WELLNESS TOOLS</div>
-
-            <button class="nav-item"
-                    data-page="fatigue"
-                    type="button">
-                <span class="nav-icon">♥</span>
-                <span>Fatigue Assessment</span>
-            </button>
-
-            <button class="nav-item"
-                    data-page="heart-rate"
-                    type="button">
-                <span class="nav-icon">♡</span>
-                <span>Heart Rate</span>
-            </button>
-
-            <button class="nav-item"
-                    data-page="breathing"
-                    type="button">
-                <span class="nav-icon">≈</span>
-                <span>Breathing Tracker</span>
-            </button>
-
-            <button class="nav-item"
-                    data-page="mental-wellness"
-                    type="button">
-                <span class="nav-icon">☼</span>
-                <span>Mental Wellness</span>
-            </button>
-
-            <button class="nav-item"
-                    data-page="mood"
-                    type="button">
-                <span class="nav-icon">☻</span>
-                <span>Mood Journal</span>
-            </button>
-
-            <button class="nav-item"
-                    data-page="sleep"
-                    type="button">
-                <span class="nav-icon">☾</span>
-                <span>Sleep Tracker</span>
-            </button>
-
-            <button class="nav-item"
-                    data-page="fitness"
-                    type="button">
-                <span class="nav-icon">⌁</span>
-                <span>Fitness & Movement</span>
-            </button>
-
-
-            <div class="nav-label">HEALTH CENTER</div>
-
-            <button class="nav-item"
-                    data-page="symptoms"
-                    type="button">
-                <span class="nav-icon">✚</span>
-                <span>Symptom Journal</span>
-            </button>
-
-            <button class="nav-item"
-                    data-page="vitals"
-                    type="button">
-                <span class="nav-icon">♥</span>
-                <span>Health Measurements</span>
-            </button>
-
-            <button class="nav-item"
-                    data-page="nutrition"
-                    type="button">
-                <span class="nav-icon">♨</span>
-                <span>Nutrition & Water</span>
-            </button>
-
-            <button class="nav-item"
-                    data-page="medication"
-                    type="button">
-                <span class="nav-icon">▤</span>
-                <span>Medication Reminders</span>
-            </button>
-
-            <button class="nav-item"
-                    data-page="devices"
-                    type="button">
-                <span class="nav-icon">⌁</span>
-                <span>Health Devices</span>
-            </button>
-
-            <button class="nav-item"
-                    data-page="history"
-                    type="button">
-                <span class="nav-icon">▥</span>
-                <span>Health History</span>
-            </button>
-
-            <button class="nav-item"
-                    data-page="settings"
-                    type="button">
-                <span class="nav-icon">⚙</span>
-                <span>Settings</span>
-            </button>
-
-        </nav>
-
-
-        <div class="sidebar-bottom">
-
-            <div class="privacy-mini-card">
-                <div class="privacy-mini-icon">⬡</div>
-
-                <div>
-                    <strong>Privacy First</strong>
-                    <p>Your health data matters.</p>
-                </div>
-
-                <span class="privacy-lock">●</span>
+              <p>
+                Enable or disable supported scan sounds.
+              </p>
             </div>
 
-            <button id="open-privacy"
-                    class="privacy-link"
-                    type="button">
-                Privacy & Data Controls
-            </button>
+            <input
+              class="toggle"
+              id="soundToggle"
+              type="checkbox"
+              checked
+              aria-label="Enable scan sound"
+            >
 
-            <div class="sidebar-footer">
-                <span>NAOL HEALTH SCANNER</span>
-                <span>Designed for wellness</span>
+          </div>
+
+          <div class="setting-row">
+
+            <div>
+              <strong>Auto Rotate 3D Model</strong>
+
+              <p>
+                Rotate the illustrative model automatically.
+              </p>
             </div>
+
+            <input
+              class="toggle"
+              id="autoRotateSetting"
+              type="checkbox"
+              aria-label="Enable automatic 3D rotation"
+            >
+
+          </div>
 
         </div>
 
-    </aside>
-
-
-    <!-- =================================================
-         MAIN CONTENT AREA
-    ================================================== -->
-
-    <main class="main-content">
-
-
-        <!-- TOP BAR -->
-
-        <header class="topbar">
-
-            <div class="topbar-left">
-
-                <button id="sidebar-toggle"
-                        class="icon-button sidebar-toggle"
-                        type="button"
-                        aria-label="Open navigation">
-                    ☰
-                </button>
-
-                <div class="breadcrumb">
-                    <span>NAOL HEALTH</span>
-                    <span class="breadcrumb-divider">/</span>
-                    <strong id="breadcrumb-current">Overview</strong>
-                </div>
-
-            </div>
-
-
-            <div class="topbar-right">
-
-                <div class="system-status">
-                    <span class="status-indicator"></span>
-                    <span id="system-status-text">System Ready</span>
-                </div>
-
-                <button id="theme-toggle"
-                        class="icon-button"
-                        type="button"
-                        aria-label="Toggle theme">
-                    ◐
-                </button>
-
-                <button id="topbar-settings"
-                        class="icon-button"
-                        type="button"
-                        aria-label="Open settings">
-                    ⚙
-                </button>
-
-            </div>
-
-        </header>
-
-
-        <!-- PAGE CONTENT -->
-
-        <div class="page-container">
-
-
-            <!-- =========================================
-                 DASHBOARD
-            ========================================== -->
-
-            <section id="page-dashboard"
-                     class="page-section active">
-
-                <div class="hero-panel">
-
-                    <div class="hero-content">
-
-                        <div class="eyebrow">
-                            <span class="eyebrow-dot"></span>
-                            YOUR PERSONAL WELLNESS STUDIO
-                        </div>
-
-                        <h2>
-                            Understand your body.
-                            <span>Support your wellbeing.</span>
-                        </h2>
-
-                        <p>
-                            Explore your body in 3D, track movement,
-                            record wellness information and keep your
-                            personal health history in one place.
-                        </p>
-
-                        <div class="hero-actions">
-
-                            <button class="primary-button"
-                                    data-go="body-scanner"
-                                    type="button">
-                                <span>♙</span>
-                                Open 3D Scanner
-                                <span class="button-arrow">→</span>
-                            </button>
-
-                            <button class="secondary-button"
-                                    data-go="mental-wellness"
-                                    type="button">
-                                <span>♡</span>
-                                Wellness Check
-                            </button>
-
-                        </div>
-
-                        <div class="hero-trust-row">
-                            <span>⬡ Privacy focused</span>
-                            <span>◈ Interactive 3D</span>
-                            <span>✓ Personal tracking</span>
-                        </div>
-
-                    </div>
-
-
-                    <div class="hero-visual">
-
-                        <div class="hero-orbit orbit-one"></div>
-                        <div class="hero-orbit orbit-two"></div>
-                        <div class="hero-orbit orbit-three"></div>
-
-                        <div class="hero-visual-center">
-                            <div class="hero-body-symbol">♙</div>
-                            <div class="hero-visual-ring"></div>
-                            <div class="hero-visual-ring ring-two"></div>
-                        </div>
-
-                        <div class="floating-tag tag-top">
-                            <span class="floating-tag-icon">◈</span>
-                            <span>
-                                <strong>3D STUDIO</strong>
-                                <small>Interactive viewer</small>
-                            </span>
-                        </div>
-
-                        <div class="floating-tag tag-bottom">
-                            <span class="floating-tag-icon">♡</span>
-                            <span>
-                                <strong>WELLNESS</strong>
-                                <small>Personal tracking</small>
-                            </span>
-                        </div>
-
-                    </div>
-
-                </div>
-
-
-                <!-- QUICK TOOLS -->
-
-                <div class="section-heading">
-
-                    <div>
-                        <div class="eyebrow">QUICK ACCESS</div>
-                        <h2>Your Health Toolkit</h2>
-                        <p>Choose a tool to get started.</p>
-                    </div>
-
-                </div>
-
-
-                <div class="quick-tools-grid">
-
-                    <button class="tool-card tool-card-featured"
-                            data-go="body-scanner"
-                            type="button">
-
-                        <span class="tool-card-icon">♙</span>
-                        <span class="tool-card-arrow">↗</span>
-
-                        <strong>3D Body Scanner</strong>
-
-                        <p>
-                            Open your camera and explore body
-                            tracking tools.
-                        </p>
-
-                        <span class="tool-card-footer">
-                            OPEN SCANNER →
-                        </span>
-
-                    </button>
-
-
-                    <button class="tool-card"
-                            data-go="posture"
-                            type="button">
-
-                        <span class="tool-card-icon">↕</span>
-                        <span class="tool-card-arrow">↗</span>
-
-                        <strong>Posture Studio</strong>
-
-                        <p>
-                            Explore posture tracking and body
-                            alignment guidance.
-                        </p>
-
-                        <span class="tool-card-footer">
-                            OPEN TOOL →
-                        </span>
-
-                    </button>
-
-
-                    <button class="tool-card"
-                            data-go="fatigue"
-                            type="button">
-
-                        <span class="tool-card-icon">♥</span>
-                        <span class="tool-card-arrow">↗</span>
-
-                        <strong>Fatigue Assessment</strong>
-
-                        <p>
-                            Record tiredness, symptoms and
-                            wellbeing information.
-                        </p>
-
-                        <span class="tool-card-footer">
-                            START CHECK →
-                        </span>
-
-                    </button>
-
-
-                    <button class="tool-card"
-                            data-go="mental-wellness"
-                            type="button">
-
-                        <span class="tool-card-icon">☼</span>
-                        <span class="tool-card-arrow">↗</span>
-
-                        <strong>Mental Wellness</strong>
-
-                        <p>
-                            Complete a self-check and explore
-                            wellbeing exercises.
-                        </p>
-
-                        <span class="tool-card-footer">
-                            EXPLORE →
-                        </span>
-
-                    </button>
-
-
-                    <button class="tool-card"
-                            data-go="heart-rate"
-                            type="button">
-
-                        <span class="tool-card-icon">♡</span>
-                        <span class="tool-card-arrow">↗</span>
-
-                        <strong>Heart Rate</strong>
-
-                        <p>
-                            Explore a camera-based pulse
-                            estimate where supported.
-                        </p>
-
-                        <span class="tool-card-footer">
-                            OPEN TOOL →
-                        </span>
-
-                    </button>
-
-
-                    <button class="tool-card"
-                            data-go="history"
-                            type="button">
-
-                        <span class="tool-card-icon">▥</span>
-                        <span class="tool-card-arrow">↗</span>
-
-                        <strong>Health History</strong>
-
-                        <p>
-                            Review personal entries saved
-                            on this device.
-                        </p>
-
-                        <span class="tool-card-footer">
-                            VIEW HISTORY →
-                        </span>
-
-                    </button>
-
-                </div>
-
-
-                <!-- PERSONAL HEALTH OVERVIEW -->
-
-                <div class="section-heading section-heading-spaced">
-
-                    <div>
-                        <div class="eyebrow">PERSONAL OVERVIEW</div>
-                        <h2>Your Wellness Snapshot</h2>
-                        <p>
-                            Your recorded information, not a medical diagnosis.
-                        </p>
-                    </div>
-
-                    <button class="text-button"
-                            data-go="history"
-                            type="button">
-                        View History →
-                    </button>
-
-                </div>
-
-
-                <div class="overview-grid">
-
-                    <article class="overview-card">
-
-                        <div class="overview-card-top">
-                            <span class="overview-icon">♡</span>
-                            <span class="overview-label">HEART RATE</span>
-                        </div>
-
-                        <div class="overview-value">
-                            <strong id="overview-heart-rate">—</strong>
-                            <span>BPM</span>
-                        </div>
-
-                        <p id="overview-heart-status">
-                            No measurement recorded
-                        </p>
-
-                    </article>
-
-
-                    <article class="overview-card">
-
-                        <div class="overview-card-top">
-                            <span class="overview-icon">≈</span>
-                            <span class="overview-label">BREATHING</span>
-                        </div>
-
-                        <div class="overview-value">
-                            <strong id="overview-breathing">—</strong>
-                            <span>/min</span>
-                        </div>
-
-                        <p id="overview-breath-status">
-                            No measurement recorded
-                        </p>
-
-                    </article>
-
-
-                    <article class="overview-card">
-
-                        <div class="overview-card-top">
-                            <span class="overview-icon">☻</span>
-                            <span class="overview-label">LATEST MOOD</span>
-                        </div>
-
-                        <div class="overview-value">
-                            <strong id="overview-mood">—</strong>
-                        </div>
-
-                        <p id="overview-mood-status">
-                            No mood entry recorded
-                        </p>
-
-                    </article>
-
-
-                    <article class="overview-card">
-
-                        <div class="overview-card-top">
-                            <span class="overview-icon">♙</span>
-                            <span class="overview-label">BODY SCANS</span>
-                        </div>
-
-                        <div class="overview-value">
-                            <strong id="overview-scans">0</strong>
-                        </div>
-
-                        <p>Saved scan sessions</p>
-
-                    </article>
-
-                </div>
-
-
-                <div class="notice-panel">
-                    <span class="notice-icon">ⓘ</span>
-
-                    <div>
-                        <strong>Important health information</strong>
-
-                        <p>
-                            Naol Health Scanner provides wellness tools,
-                            educational information and estimates.
-                            It does not diagnose disease or replace
-                            professional medical care. Some measurements
-                            require compatible external devices.
-                        </p>
-                    </div>
-                </div>
-
-            </section>
-
-
-            <!-- =========================================
-                 3D BODY SCANNER
-            ========================================== -->
-
-            <section id="page-body-scanner"
-                     class="page-section">
-
-                <div class="page-title-row">
-
-                    <div>
-                        <div class="eyebrow">BODY VISUALIZATION</div>
-                        <h2>3D Body Scanner</h2>
-
-                        <p>
-                            Use your camera for guided body positioning.
-                            Explore the interactive 3D viewer.
-                        </p>
-                    </div>
-
-                    <span class="page-status-badge">
-                        <span class="status-indicator"></span>
-                        READY
-                    </span>
-
-                </div>
-
-
-                <div class="scanner-layout">
-
-                    <!-- 3D VIEWER -->
-
-                    <div class="scanner-main-card">
-
-                        <div class="scanner-card-header">
-
-                            <div>
-                                <strong>3D BODY VIEWER</strong>
-                                <p>Interactive model</p>
-                            </div>
-
-                            <span class="viewer-mode-badge">
-                                3D VIEW
-                            </span>
-
-                        </div>
-
-
-                        <div id="body-viewer"
-                             class="body-viewer">
-
-                            <div class="viewer-grid"></div>
-
-                            <div class="viewer-loading"
-                                 id="viewer-loading">
-
-                                <div class="viewer-loading-icon">♙</div>
-
-                                <strong>Preparing 3D viewer</strong>
-
-                                <p>
-                                    Loading interactive visualization...
-                                </p>
-
-                            </div>
-
-                            <canvas id="body-3d-canvas"
-                                    aria-label="Interactive 3D body viewer">
-                            </canvas>
-
-                            <div class="viewer-overlay-top">
-                                <span>NAOL 3D STUDIO</span>
-                                <span id="viewer-render-status">
-                                    INITIALIZING
-                                </span>
-                            </div>
-
-                            <div class="viewer-overlay-bottom">
-
-                                <span>ROTATE · ZOOM · EXPLORE</span>
-
-                                <button id="viewer-reset"
-                                        class="viewer-small-button"
-                                        type="button">
-                                    Reset View
-                                </button>
-
-                            </div>
-
-                        </div>
-
-
-                        <div class="viewer-controls">
-
-                            <button id="view-front"
-                                    class="viewer-control-button active"
-                                    type="button">
-                                Front
-                            </button>
-
-                            <button id="view-back"
-                                    class="viewer-control-button"
-                                    type="button">
-                                Back
-                            </button>
-
-                            <button id="view-left"
-                                    class="viewer-control-button"
-                                    type="button">
-                                Left
-                            </button>
-
-                            <button id="view-right"
-                                    class="viewer-control-button"
-                                    type="button">
-                                Right
-                            </button>
-
-                            <button id="toggle-auto-rotate"
-                                    class="viewer-control-button"
-                                    type="button">
-                                Auto Rotate
-                            </button>
-
-                        </div>
-
-
-                        <div class="viewer-note">
-                            <span>ⓘ</span>
-
-                            <p>
-                                The displayed model is a generic
-                                visualization until an actual
-                                reconstruction is available.
-                                It is not a medically accurate
-                                scan of your body.
-                            </p>
-                        </div>
-
-                    </div>
-
-
-                    <!-- CAMERA PANEL -->
-
-                    <div class="scanner-side-column">
-
-                        <div class="panel-card">
-
-                            <div class="panel-heading">
-                                <div>
-                                    <div class="eyebrow">LIVE CAPTURE</div>
-                                    <h3>Camera Studio</h3>
-                                </div>
-
-                                <span class="camera-status-dot"
-                                      id="camera-status-dot"></span>
-                            </div>
-
-
-                            <div class="camera-preview"
-                                 id="camera-preview">
-
-                                <video id="camera-video"
-                                       autoplay
-                                       playsinline
-                                       muted>
-                                </video>
-
-                                <div class="camera-placeholder"
-                                     id="camera-placeholder">
-
-                                    <div class="camera-placeholder-icon">
-                                        ◎
-                                    </div>
-
-                                    <strong>Camera is off</strong>
-
-                                    <p>
-                                        Start the camera to preview
-                                        your position.
-                                    </p>
-
-                                </div>
-
-                                <div class="camera-guide">
-                                    <div class="camera-guide-corner top-left"></div>
-                                    <div class="camera-guide-corner top-right"></div>
-                                    <div class="camera-guide-corner bottom-left"></div>
-                                    <div class="camera-guide-corner bottom-right"></div>
-                                </div>
-
-                                <div class="camera-live-badge"
-                                     id="camera-live-badge">
-                                    <span></span>
-                                    LIVE
-                                </div>
-
-                            </div>
-
-
-                            <div class="camera-controls">
-
-                                <button id="start-camera"
-                                        class="primary-button full-width"
-                                        type="button">
-                                    ◎ Start Camera
-                                </button>
-
-                                <button id="stop-camera"
-                                        class="secondary-button full-width"
-                                        type="button"
-                                        disabled>
-                                    Stop Camera
-                                </button>
-
-                                <button id="switch-camera"
-                                        class="secondary-button full-width"
-                                        type="button">
-                                    ↻ Switch Camera
-                                </button>
-
-                            </div>
-
-
-                            <div class="camera-setting-row">
-
-                                <label for="camera-quality">
-                                    Camera quality
-                                </label>
-
-                                <select id="camera-quality">
-                                    <option value="low">Low — Faster</option>
-                                    <option value="medium" selected>
-                                        Medium — Balanced
-                                    </option>
-                                    <option value="high">
-                                        High — More detail
-                                    </option>
-                                </select>
-
-                            </div>
-
-
-                            <div class="camera-setting-row">
-
-                                <label for="mirror-camera">
-                                    Mirror preview
-                                </label>
-
-                                <input id="mirror-camera"
-                                       type="checkbox"
-                                       checked>
-
-                            </div>
-
-
-                            <div class="camera-setting-row">
-
-                                <label for="keep-screen-awake">
-                                    Keep screen awake
-                                </label>
-
-                                <input id="keep-screen-awake"
-                                       type="checkbox">
-
-                            </div>
-
-                            <p class="small-muted">
-                                Camera access requires permission.
-                                Keep-screen-awake support depends
-                                on your browser and device.
-                            </p>
-
-                        </div>
-
-
-                        <!-- SCAN CONTROLS -->
-
-                        <div class="panel-card">
-
-                            <div class="panel-heading">
-                                <div>
-                                    <div class="eyebrow">SCAN SESSION</div>
-                                    <h3>Scan Controls</h3>
-                                </div>
-                            </div>
-
-
-                            <div class="scan-status-row">
-                                <span>Session status</span>
-                                <strong id="scan-status">Not started</strong>
-                            </div>
-
-
-                            <div class="scan-progress-track">
-                                <div id="scan-progress-bar"
-                                     class="scan-progress-bar">
-                                </div>
-                            </div>
-
-
-                            <div class="scan-progress-info">
-                                <span id="scan-progress-label">
-                                    Ready to begin
-                                </span>
-
-                                <strong id="scan-progress-percent">
-                                    0%
-                                </strong>
-                            </div>
-
-
-                            <div class="scan-timer-box">
-                                <span>SESSION TIME</span>
-                                <strong id="scan-timer">00:00</strong>
-                            </div>
-
-
-                            <button id="start-scan"
-                                    class="primary-button full-width"
-                                    type="button">
-                                ▶ Start Scan
-                            </button>
-
-                            <button id="pause-scan"
-                                    class="secondary-button full-width"
-                                    type="button"
-                                    disabled>
-                                Ⅱ Pause Scan
-                            </button>
-
-                            <button id="resume-scan"
-                                    class="secondary-button full-width"
-                                    type="button"
-                                    disabled>
-                                ▶ Resume Scan
-                            </button>
-
-                            <button id="complete-scan"
-                                    class="secondary-button full-width"
-                                    type="button"
-                                    disabled>
-                                ✓ Complete Session
-                            </button>
-
-                            <button id="cancel-scan"
-                                    class="danger-button full-width"
-                                    type="button"
-                                    disabled>
-                                Cancel Session
-                            </button>
-
-                        </div>
-
-                    </div>
-
-                </div>
-
-
-                <!-- CAPTURE VIEWS -->
-
-                <div class="section-heading section-heading-spaced">
-
-                    <div>
-                        <div class="eyebrow">GUIDED CAPTURE</div>
-                        <h2>Capture Positions</h2>
-
-                        <p>
-                            Capture different views to support
-                            the scanning workflow.
-                        </p>
-                    </div>
-
-                </div>
-
-
-                <div class="capture-grid">
-
-                    <button class="capture-card"
-                            data-capture="front"
-                            type="button">
-
-                        <span class="capture-card-icon">♙</span>
-                        <strong>Front View</strong>
-                        <small>Face forward</small>
-                        <span class="capture-card-action">
-                            Capture →
-                        </span>
-
-                    </button>
-
-
-                    <button class="capture-card"
-                            data-capture="left"
-                            type="button">
-
-                        <span class="capture-card-icon">←</span>
-                        <strong>Left View</strong>
-                        <small>Turn left</small>
-                        <span class="capture-card-action">
-                            Capture →
-                        </span>
-
-                    </button>
-
-
-                    <button class="capture-card"
-                            data-capture="right"
-                            type="button">
-
-                        <span class="capture-card-icon">→</span>
-                        <strong>Right View</strong>
-                        <small>Turn right</small>
-                        <span class="capture-card-action">
-                            Capture →
-                        </span>
-
-                    </button>
-
-
-                    <button class="capture-card"
-                            data-capture="back"
-                            type="button">
-
-                        <span class="capture-card-icon">↻</span>
-                        <strong>Back View</strong>
-                        <small>Turn around</small>
-                        <span class="capture-card-action">
-                            Capture →
-                        </span>
-
-                    </button>
-
-                </div>
-
-
-                <div id="capture-results"
-                     class="capture-results">
-
-                    <div class="empty-state">
-                        <span>▧</span>
-                        <strong>No captures yet</strong>
-                        <p>
-                            Start the camera and capture a view
-                            to see it here.
-                        </p>
-                    </div>
-
-                </div>
-
-
-                <div class="panel-card export-panel">
-
-                    <div>
-                        <div class="eyebrow">YOUR SESSION</div>
-                        <h3>Save & Export</h3>
-
-                        <p>
-                            Save available captures or export
-                            supported data from this session.
-                        </p>
-                    </div>
-
-                    <div class="export-actions">
-
-                        <button id="download-captures"
-                                class="secondary-button"
-                                type="button">
-                            ↓ Download Captures
-                        </button>
-
-                        <button id="export-model"
-                                class="primary-button"
-                                type="button">
-                            ↓ Export 3D Model
-                        </button>
-
-                        <button id="clear-captures"
-                                class="danger-button"
-                                type="button">
-                            Clear Captures
-                        </button>
-
-                    </div>
-
-                    <p class="small-muted">
-                        Exporting a generic viewer is not the same
-                        as reconstructing a true scanned body.
-                        A valid model must exist before model export.
-                    </p>
-
-                </div>
-
-            </section>
-
-
-            <!-- =========================================
-                 POSTURE STUDIO
-            ========================================== -->
-
-            <section id="page-posture"
-                     class="page-section">
-
-                <div class="page-title-row">
-                    <div>
-                        <div class="eyebrow">MOVEMENT & ALIGNMENT</div>
-                        <h2>Posture Studio</h2>
-
-                        <p>
-                            Explore camera-based posture guidance
-                            and body positioning.
-                        </p>
-                    </div>
-                </div>
-
-
-                <div class="two-column-grid">
-
-                    <div class="panel-card">
-
-                        <div class="panel-heading">
-                            <h3>Posture Check</h3>
-                            <span class="status-pill">CAMERA</span>
-                        </div>
-
-                        <p>
-                            Stand comfortably where your body
-                            is visible in the camera preview.
-                        </p>
-
-                        <div class="posture-guide-box">
-                            <span class="posture-guide-symbol">♙</span>
-
-                            <strong>Position yourself</strong>
-
-                            <p>
-                                Keep your full body visible,
-                                use good lighting and stand naturally.
-                            </p>
-                        </div>
-
-                        <button id="start-posture-check"
-                                class="primary-button full-width"
-                                type="button">
-                            Start Posture Check
-                        </button>
-
-                        <button id="stop-posture-check"
-                                class="secondary-button full-width"
-                                type="button">
-                            Stop Posture Check
-                        </button>
-
-                        <div id="posture-status"
-                             class="result-message">
-                            Posture tracking is not active.
-                        </div>
-
-                    </div>
-
-
-                    <div class="panel-card">
-
-                        <div class="panel-heading">
-                            <h3>Posture Guidance</h3>
-                        </div>
-
-                        <div class="result-row">
-                            <span>Body visibility</span>
-                            <strong id="posture-visibility">Unknown</strong>
-                        </div>
-
-                        <div class="result-row">
-                            <span>Tracking confidence</span>
-                            <strong id="posture-confidence">—</strong>
-                        </div>
-
-                        <div class="result-row">
-                            <span>Shoulder alignment</span>
-                            <strong id="posture-shoulders">Not measured</strong>
-                        </div>
-
-                        <div class="result-row">
-                            <span>Body alignment</span>
-                            <strong id="posture-alignment">Not measured</strong>
-                        </div>
-
-                        <p class="small-muted">
-                            Posture estimates require an active
-                            pose-tracking model. They are not a
-                            diagnosis of spinal or joint conditions.
-                        </p>
-
-                    </div>
-
-                </div>
-
-            </section>
-
-
-            <!-- =========================================
-                 BODY MEASUREMENTS
-            ========================================== -->
-
-            <section id="page-measurements"
-                     class="page-section">
-
-                <div class="page-title-row">
-                    <div>
-                        <div class="eyebrow">PERSONAL MEASUREMENTS</div>
-                        <h2>Body Measurements</h2>
-
-                        <p>
-                            Record measurements and calibrate
-                            estimates using a known reference.
-                        </p>
-                    </div>
-                </div>
-
-
-                <div class="two-column-grid">
-
-                    <div class="panel-card">
-
-                        <h3>Calibration</h3>
-
-                        <form id="measurement-form">
-
-                            <div class="form-field">
-                                <label for="actual-height">
-                                    Your known height
-                                </label>
-
-                                <input id="actual-height"
-                                       type="number"
-                                       min="50"
-                                       max="250"
-                                       step="0.1"
-                                       placeholder="e.g. 170"
-                                       inputmode="decimal">
-                            </div>
-
-                            <div class="form-field">
-                                <label for="height-unit">
-                                    Height unit
-                                </label>
-
-                                <select id="height-unit">
-                                    <option value="cm">Centimeters</option>
-                                    <option value="inch">Inches</option>
-                                </select>
-                            </div>
-
-                            <div class="form-field">
-                                <label for="reference-distance">
-                                    Camera distance (optional, cm)
-                                </label>
-
-                                <input id="reference-distance"
-                                       type="number"
-                                       min="20"
-                                       max="1000"
-                                       step="1"
-                                       placeholder="Distance in cm"
-                                       inputmode="numeric">
-                            </div>
-
-                            <button class="primary-button full-width"
-                                    type="submit">
-                                Save Calibration
-                            </button>
-
-                        </form>
-
-                        <p class="small-muted">
-                            Calibration information alone does not
-                            guarantee accurate 3D body measurements.
-                        </p>
-
-                    </div>
-
-
-                    <div class="panel-card">
-
-                        <h3>Manual Measurements</h3>
-
-                        <form id="manual-measurement-form">
-
-                            <div class="form-field">
-                                <label for="manual-weight">
-                                    Weight (kg)
-                                </label>
-
-                                <input id="manual-weight"
-                                       type="number"
-                                       min="1"
-                                       max="500"
-                                       step="0.1"
-                                       placeholder="Enter measured weight"
-                                       inputmode="decimal">
-                            </div>
-
-                            <div class="form-field">
-                                <label for="manual-waist">
-                                    Waist circumference (cm)
-                                </label>
-
-                                <input id="manual-waist"
-                                       type="number"
-                                       min="1"
-                                       max="300"
-                                       step="0.1"
-                                       placeholder="Enter measured value"
-                                       inputmode="decimal">
-                            </div>
-
-                            <div class="form-field">
-                                <label for="manual-chest">
-                                    Chest circumference (cm)
-                                </label>
-
-                                <input id="manual-chest"
-                                       type="number"
-                                       min="1"
-                                       max="300"
-                                       step="0.1"
-                                       placeholder="Enter measured value"
-                                       inputmode="decimal">
-                            </div>
-
-                            <button class="primary-button full-width"
-                                    type="submit">
-                                Save Measurements
-                            </button>
-
-                        </form>
-
-                    </div>
-
-                </div>
-
-
-                <div class="panel-card">
-
-                    <div class="panel-heading">
-                        <h3>Saved Measurements</h3>
-                        <button id="clear-measurements"
-                                class="text-button"
-                                type="button">
-                            Clear
-                        </button>
-                    </div>
-
-                    <div id="measurement-results"
-                         class="measurement-results">
-
-                        <div class="empty-state">
-                            <span>⌗</span>
-                            <strong>No measurements recorded</strong>
-                            <p>
-                                Add a measurement or calibration
-                                to see it here.
-                            </p>
-                        </div>
-
-                    </div>
-
-                </div>
-
-            </section>
-
-
-            <!-- =========================================
-                 3D ANATOMY LAB
-            ========================================== -->
-
-            <section id="page-anatomy"
-                     class="page-section">
-
-                <div class="page-title-row">
-                    <div>
-                        <div class="eyebrow">EDUCATIONAL VISUALIZATION</div>
-                        <h2>3D Anatomy Lab</h2>
-
-                        <p>
-                            Explore human anatomy through
-                            educational illustrations.
-                        </p>
-                    </div>
-                </div>
-
-
-                <div class="anatomy-grid">
-
-                    <button class="anatomy-card"
-                            data-anatomy="skeleton"
-                            type="button">
-                        <span class="anatomy-symbol">♙</span>
-                        <strong>Skeleton</strong>
-                        <small>Bone structure</small>
-                    </button>
-
-                    <button class="anatomy-card"
-                            data-anatomy="muscles"
-                            type="button">
-                        <span class="anatomy-symbol">◈</span>
-                        <strong>Muscles</strong>
-                        <small>Muscular system</small>
-                    </button>
-
-                    <button class="anatomy-card"
-                            data-anatomy="heart"
-                            type="button">
-                        <span class="anatomy-symbol">♥</span>
-                        <strong>Heart</strong>
-                        <small>Circulatory anatomy</small>
-                    </button>
-
-                    <button class="anatomy-card"
-                            data-anatomy="lungs"
-                            type="button">
-                        <span class="anatomy-symbol">≈</span>
-                        <strong>Lungs</strong>
-                        <small>Respiratory anatomy</small>
-                    </button>
-
-                    <button class="anatomy-card"
-                            data-anatomy="brain"
-                            type="button">
-                        <span class="anatomy-symbol">☼</span>
-                        <strong>Brain</strong>
-                        <small>Nervous system</small>
-                    </button>
-
-                    <button class="anatomy-card"
-                            data-anatomy="digestive"
-                            type="button">
-                        <span class="anatomy-symbol">♧</span>
-                        <strong>Digestive System</strong>
-                        <small>Digestive anatomy</small>
-                    </button>
-
-                </div>
-
-
-                <div id="anatomy-information"
-                     class="panel-card">
-
-                    <h3>Educational Anatomy</h3>
-
-                    <p>
-                        Select a system above to view its
-                        educational information.
-                    </p>
-
-                    <p class="small-muted">
-                        These are educational models, not scans
-                        of your actual internal organs.
-                    </p>
-
-                </div>
-
-            </section>
-
-
-            <!-- =========================================
-                 FATIGUE ASSESSMENT
-            ========================================== -->
-
-            <section id="page-fatigue"
-                     class="page-section">
-
-                <div class="page-title-row">
-                    <div>
-                        <div class="eyebrow">PERSONAL WELLNESS</div>
-                        <h2>Fatigue Assessment</h2>
-
-                        <p>
-                            Record tiredness and symptoms to help
-                            decide what support you may need.
-                        </p>
-                    </div>
-                </div>
-
-
-                <div class="panel-card">
-
-                    <div class="assessment-intro">
-                        <span class="assessment-icon">♥</span>
-
-                        <div>
-                            <h3>How are you feeling right now?</h3>
-
-                            <p>
-                                Answer honestly. This check cannot
-                                diagnose the cause of fatigue.
-                            </p>
-                        </div>
-                    </div>
-
-
-                    <form id="fatigue-form">
-
-                        <div class="form-field">
-                            <label for="fatigue-level">
-                                1. How tired do you feel?
-                            </label>
-
-                            <select id="fatigue-level" required>
-                                <option value="">Choose an answer</option>
-                                <option value="0">Not tired</option>
-                                <option value="1">Mildly tired</option>
-                                <option value="2">Moderately tired</option>
-                                <option value="3">Very tired</option>
-                            </select>
-                        </div>
-
-
-                        <div class="form-field">
-                            <label for="fatigue-duration">
-                                2. How long have you felt this way?
-                            </label>
-
-                            <select id="fatigue-duration" required>
-                                <option value="">Choose an answer</option>
-                                <option value="hours">A few hours</option>
-                                <option value="days">Several days</option>
-                                <option value="weeks">Weeks or longer</option>
-                            </select>
-                        </div>
-
-
-                        <div class="form-field">
-                            <label for="fatigue-sleep">
-                                3. How has your sleep been?
-                            </label>
-
-                            <select id="fatigue-sleep" required>
-                                <option value="">Choose an answer</option>
-                                <option value="good">Good</option>
-                                <option value="mixed">Mixed</option>
-                                <option value="poor">Poor</option>
-                            </select>
-                        </div>
-
-
-                        <fieldset class="symptom-fieldset">
-
-                            <legend>
-                                4. Are any of these symptoms present?
-                            </legend>
-
-                            <label class="checkbox-row">
-                                <input type="checkbox"
-                                       name="fatigue-symptom"
-                                       value="dizziness">
-                                Dizziness
-                            </label>
-
-                            <label class="checkbox-row">
-                                <input type="checkbox"
-                                       name="fatigue-symptom"
-                                       value="headache">
-                                Headache
-                            </label>
-
-                            <label class="checkbox-row">
-                                <input type="checkbox"
-                                       name="fatigue-symptom"
-                                       value="breathing">
-                                Difficulty breathing
-                            </label>
-
-                            <label class="checkbox-row">
-                                <input type="checkbox"
-                                       name="fatigue-symptom"
-                                       value="chest-pain">
-                                Chest pain
-                            </label>
-
-                            <label class="checkbox-row">
-                                <input type="checkbox"
-                                       name="fatigue-symptom"
-                                       value="fainting">
-                                Fainting or difficulty staying awake
-                            </label>
-
-                        </fieldset>
-
-
-                        <button class="primary-button"
-                                type="submit">
-                            Review My Answers →
-                        </button>
-
-                    </form>
-
-
-                    <div id="fatigue-results"
-                         class="assessment-results"
-                         aria-live="polite">
-                    </div>
-
-                </div>
-
-
-                <div class="notice-panel">
-                    <span class="notice-icon">!</span>
-
-                    <div>
-                        <strong>When to seek urgent help</strong>
-
-                        <p>
-                            Severe or sudden fatigue with chest pain,
-                            severe difficulty breathing, fainting,
-                            confusion or new weakness may be an
-                            emergency. Seek urgent medical help
-                            rather than waiting for a scan.
-                        </p>
-                    </div>
-                </div>
-
-            </section>
-
-
-            <!-- =========================================
-                 HEART RATE
-            ========================================== -->
-
-            <section id="page-heart-rate"
-                     class="page-section">
-
-                <div class="page-title-row">
-                    <div>
-                        <div class="eyebrow">VITALS & WELLNESS</div>
-                        <h2>Heart Rate</h2>
-
-                        <p>
-                            Explore a camera-based pulse estimate
-                            on supported devices.
-                        </p>
-                    </div>
-                </div>
-
-
-                <div class="two-column-grid">
-
-                    <div class="panel-card heart-test-card">
-
-                        <div class="heart-animation">♡</div>
-
-                        <div class="eyebrow">
-                            CAMERA PULSE ESTIMATE
-                        </div>
-
-                        <h3>Pulse Measurement</h3>
-
-                        <p>
-                            This optional test may use your
-                            fingertip, camera and flashlight.
-                        </p>
-
-                        <div class="heart-rate-display">
-                            <strong id="heart-rate-value">—</strong>
-                            <span>BPM</span>
-                        </div>
-
-                        <p id="heart-rate-status"
-                           class="small-muted">
-                            No measurement available.
-                        </p>
-
-                        <button id="start-heart-test"
-                                class="primary-button full-width"
-                                type="button">
-                            Start Pulse Test
-                        </button>
-
-                        <button id="stop-heart-test"
-                                class="secondary-button full-width"
-                                type="button">
-                            Stop Test
-                        </button>
-
-                    </div>
-
-
-                    <div class="panel-card">
-
-                        <h3>Manual Reading</h3>
-
-                        <p>
-                            If you used a compatible device,
-                            you can record its result here.
-                        </p>
-
-                        <form id="manual-heart-form">
-
-                            <div class="form-field">
-                                <label for="manual-heart-value">
-                                    Heart rate (BPM)
-                                </label>
-
-                                <input id="manual-heart-value"
-                                       type="number"
-                                       min="20"
-                                       max="250"
-                                       required
-                                       placeholder="Enter measured BPM"
-                                       inputmode="numeric">
-                            </div>
-
-                            <button class="primary-button full-width"
-                                    type="submit">
-                                Save Reading
-                            </button>
-
-                        </form>
-
-                        <p class="small-muted">
-                            Camera-based estimates may be inaccurate.
-                            This tool does not diagnose heart disease.
-                        </p>
-
-                    </div>
-
-                </div>
-
-            </section>
-
-
-            <!-- =========================================
-                 BREATHING TRACKER
-            ========================================== -->
-
-            <section id="page-breathing"
-                     class="page-section">
-
-                <div class="page-title-row">
-                    <div>
-                        <div class="eyebrow">BREATHING & RELAXATION</div>
-                        <h2>Breathing Tracker</h2>
-
-                        <p>
-                            Record breathing measurements or
-                            follow a relaxation exercise.
-                        </p>
-                    </div>
-                </div>
-
-
-                <div class="two-column-grid">
-
-                    <div class="panel-card">
-
-                        <div class="breathing-orb"
-                             id="breathing-orb">
-
-                            <span id="breathing-orb-text">
-                                BREATHE
-                            </span>
-
-                        </div>
-
-                        <h3>Guided Breathing</h3>
-
-                        <p id="breathing-guide">
-                            Start a gentle breathing exercise
-                            at your own comfortable pace.
-                        </p>
-
-                        <button id="start-breathing-exercise"
-                                class="primary-button full-width"
-                                type="button">
-                            Start Exercise
-                        </button>
-
-                        <button id="stop-breathing-exercise"
-                                class="secondary-button full-width"
-                                type="button">
-                            Stop Exercise
-                        </button>
-
-                    </div>
-
-
-                    <div class="panel-card">
-
-                        <h3>Breathing Record</h3>
-
-                        <form id="manual-breathing-form">
-
-                            <div class="form-field">
-                                <label for="manual-breathing-value">
-                                    Breaths per minute
-                                </label>
-
-                                <input id="manual-breathing-value"
-                                       type="number"
-                                       min="1"
-                                       max="100"
-                                       required
-                                       placeholder="Enter measured value"
-                                       inputmode="numeric">
-                            </div>
-
-                            <button class="primary-button full-width"
-                                    type="submit">
-                                Save Breathing Record
-                            </button>
-
-                        </form>
-
-                        <p class="small-muted">
-                            A camera cannot reliably measure breathing
-                            in every position or lighting condition.
-                        </p>
-
-                    </div>
-
-                </div>
-
-            </section>
-
-
-            <!-- =========================================
-                 MENTAL WELLNESS
-            ========================================== -->
-
-            <section id="page-mental-wellness"
-                     class="page-section">
-
-                <div class="page-title-row">
-                    <div>
-                        <div class="eyebrow">MIND & EMOTIONAL WELLBEING</div>
-                        <h2>Mental Wellness</h2>
-
-                        <p>
-                            Reflect on your feelings and explore
-                            supportive wellness exercises.
-                        </p>
-                    </div>
-                </div>
-
-
-                <div class="notice-panel">
-                    <span class="notice-icon">♡</span>
-
-                    <div>
-                        <strong>A supportive, private space</strong>
-
-                        <p>
-                            Facial expressions and biometrics cannot
-                            establish whether someone has depression.
-                            This section focuses on your own answers
-                            and personal wellbeing records.
-                        </p>
-                    </div>
-                </div>
-
-
-                <div class="panel-card">
-
-                    <h3>How have you been feeling?</h3>
-
-                    <p>
-                        Select the option that best describes
-                        your feelings today.
-                    </p>
-
-                    <form id="mental-wellness-form">
-
-                        <div class="mood-choice-grid">
-
-                            <label class="mood-choice">
-                                <input type="radio"
-                                       name="mental-mood"
-                                       value="great"
-                                       required>
-                                <span class="mood-emoji">😊</span>
-                                <span>Very good</span>
-                            </label>
-
-                            <label class="mood-choice">
-                                <input type="radio"
-                                       name="mental-mood"
-                                       value="okay">
-                                <span class="mood-emoji">🙂</span>
-                                <span>Okay</span>
-                            </label>
-
-                            <label class="mood-choice">
-                                <input type="radio"
-                                       name="mental-mood"
-                                       value="neutral">
-                                <span class="mood-emoji">😐</span>
-                                <span>Neutral</span>
-                            </label>
-
-                            <label class="mood-choice">
-                                <input type="radio"
-                                       name="mental-mood"
-                                       value="sad">
-                                <span class="mood-emoji">😔</span>
-                                <span>Sad</span>
-                            </label>
-
-                            <label class="mood-choice">
-                                <input type="radio"
-                                       name="mental-mood"
-                                       value="anxious">
-                                <span class="mood-emoji">😟</span>
-                                <span>Anxious</span>
-                            </label>
-
-                            <label class="mood-choice">
-                                <input type="radio"
-                                       name="mental-mood"
-                                       value="overwhelmed">
-                                <span class="mood-emoji">😣</span>
-                                <span>Overwhelmed</span>
-                            </label>
-
-                        </div>
-
-
-                        <div class="form-field">
-                            <label for="mental-duration">
-                                How long have you felt this way?
-                            </label>
-
-                            <select id="mental-duration" required>
-                                <option value="">Choose duration</option>
-                                <option value="today">Today</option>
-                                <option value="days">Several days</option>
-                                <option value="weeks">Two weeks or longer</option>
-                            </select>
-                        </div>
-
-
-                        <div class="form-field">
-                            <label for="mental-sleep">
-                                How has your sleep been?
-                            </label>
-
-                            <select id="mental-sleep" required>
-                                <option value="">Choose an answer</option>
-                                <option value="good">Good</option>
-                                <option value="mixed">Mixed</option>
-                                <option value="poor">Poor</option>
-                            </select>
-                        </div>
-
-
-                        <div class="form-field">
-                            <label for="mental-notes">
-                                Anything else you would like to record?
-                            </label>
-
-                            <textarea id="mental-notes"
-                                      rows="3"
-                                      maxlength="1000"
-                                      placeholder="Optional private journal entry"></textarea>
-                        </div>
-
-
-                        <button class="primary-button"
-                                type="submit">
-                            Save Wellness Entry →
-                        </button>
-
-                    </form>
-
-                    <div id="mental-wellness-results"
-                         class="assessment-results"
-                         aria-live="polite">
-                    </div>
-
-                </div>
-
-
-                <div class="panel-card">
-
-                    <h3>Relaxation Center</h3>
-
-                    <p>
-                        Choose a gentle activity that feels
-                        comfortable for you.
-                    </p>
-
-                    <div class="relaxation-grid">
-
-                        <button class="relaxation-card"
-                                data-relaxation="breathing"
-                                type="button">
-                            <span>≈</span>
-                            <strong>Gentle Breathing</strong>
-                            <small>Follow a slow breathing guide</small>
-                        </button>
-
-                        <button class="relaxation-card"
-                                data-relaxation="grounding"
-                                type="button">
-                            <span>◈</span>
-                            <strong>Grounding</strong>
-                            <small>Notice your surroundings</small>
-                        </button>
-
-                        <button class="relaxation-card"
-                                data-relaxation="reflection"
-                                type="button">
-                            <span>☼</span>
-                            <strong>Quiet Reflection</strong>
-                            <small>Take a calm moment</small>
-                        </button>
-
-                    </div>
-
-                    <div id="relaxation-results"
-                         class="relaxation-results"
-                         aria-live="polite">
-                    </div>
-
-                </div>
-
-
-                <div class="notice-panel">
-                    <span class="notice-icon">ⓘ</span>
-
-                    <div>
-                        <strong>Need additional support?</strong>
-
-                        <p>
-                            If sadness, anxiety or loss of interest
-                            continues or affects everyday life,
-                            consider speaking with a qualified
-                            mental-health professional or a trusted
-                            person. If you may harm yourself, seek
-                            immediate help from local emergency
-                            services or someone who can stay with you.
-                        </p>
-                    </div>
-                </div>
-
-            </section>
-
-
-            <!-- =========================================
-                 MOOD JOURNAL
-            ========================================== -->
-
-            <section id="page-mood"
-                     class="page-section">
-
-                <div class="page-title-row">
-                    <div>
-                        <div class="eyebrow">DAILY REFLECTION</div>
-                        <h2>Mood Journal</h2>
-
-                        <p>
-                            Record your mood and reflect on your day.
-                        </p>
-                    </div>
-                </div>
-
-
-                <div class="panel-card">
-
-                    <h3>Record Today's Mood</h3>
-
-                    <form id="mood-form">
-
-                        <div class="form-field">
-                            <label for="mood-value">
-                                How do you feel?
-                            </label>
-
-                            <select id="mood-value" required>
-                                <option value="">Choose mood</option>
-                                <option value="great">Very good</option>
-                                <option value="good">Good</option>
-                                <option value="neutral">Neutral</option>
-                                <option value="sad">Sad</option>
-                                <option value="anxious">Anxious</option>
-                                <option value="stressed">Stressed</option>
-                                <option value="tired">Tired</option>
-                            </select>
-                        </div>
-
-                        <div class="form-field">
-                            <label for="mood-notes">
-                                Notes (optional)
-                            </label>
-
-                            <textarea id="mood-notes"
-                                      rows="3"
-                                      maxlength="1000"
-                                      placeholder="Write about your day..."></textarea>
-                        </div>
-
-                        <button class="primary-button"
-                                type="submit">
-                            Save Mood
-                        </button>
-
-                    </form>
-
-                </div>
-
-
-                <div class="panel-card">
-                    <h3>Mood History</h3>
-
-                    <div id="mood-history"
-                         class="history-list">
-                    </div>
-                </div>
-
-            </section>
-
-
-            <!-- =========================================
-                 SLEEP TRACKER
-            ========================================== -->
-
-            <section id="page-sleep"
-                     class="page-section">
-
-                <div class="page-title-row">
-                    <div>
-                        <div class="eyebrow">REST & RECOVERY</div>
-                        <h2>Sleep Tracker</h2>
-
-                        <p>
-                            Record sleep duration and your
-                            personal sleep experience.
-                        </p>
-                    </div>
-                </div>
-
-
-                <div class="two-column-grid">
-
-                    <div class="panel-card">
-
-                        <h3>Record Sleep</h3>
-
-                        <form id="sleep-form">
-
-                            <div class="form-field">
-                                <label for="sleep-hours">
-                                    Hours slept
-                                </label>
-
-                                <input id="sleep-hours"
-                                       type="number"
-                                       min="0"
-                                       max="24"
-                                       step="0.25"
-                                       required
-                                       placeholder="e.g. 7.5"
-                                       inputmode="decimal">
-                            </div>
-
-                            <div class="form-field">
-                                <label for="sleep-quality">
-                                    Sleep quality
-                                </label>
-
-                                <select id="sleep-quality" required>
-                                    <option value="">Choose quality</option>
-                                    <option value="good">Good</option>
-                                    <option value="mixed">Mixed</option>
-                                    <option value="poor">Poor</option>
-                                </select>
-                            </div>
-
-                            <div class="form-field">
-                                <label for="sleep-notes">
-                                    Notes (optional)
-                                </label>
-
-                                <textarea id="sleep-notes"
-                                          rows="2"
-                                          maxlength="500"
-                                          placeholder="How did you sleep?"></textarea>
-                            </div>
-
-                            <button class="primary-button"
-                                    type="submit">
-                                Save Sleep Record
-                            </button>
-
-                        </form>
-
-                    </div>
-
-
-                    <div class="panel-card">
-
-                        <div class="eyebrow">LATEST RECORD</div>
-
-                        <div class="sleep-display">
-                            <span>☾</span>
-                            <strong id="latest-sleep-hours">—</strong>
-                            <small>hours</small>
-                        </div>
-
-                        <p id="latest-sleep-quality">
-                            No sleep record available.
-                        </p>
-
-                        <p class="small-muted">
-                            This tracker records what you enter.
-                            It does not measure sleep stages or
-                            diagnose sleep disorders.
-                        </p>
-
-                    </div>
-
-                </div>
-
-
-                <div class="panel-card">
-                    <h3>Sleep History</h3>
-
-                    <div id="sleep-history"
-                         class="history-list">
-                    </div>
-                </div>
-
-            </section>
-
-
-            <!-- =========================================
-                 FITNESS & MOVEMENT
-            ========================================== -->
-
-            <section id="page-fitness"
-                     class="page-section">
-
-                <div class="page-title-row">
-                    <div>
-                        <div class="eyebrow">ACTIVITY & MOVEMENT</div>
-                        <h2>Fitness Studio</h2>
-
-                        <p>
-                            Record activities and explore
-                            movement exercises.
-                        </p>
-                    </div>
-                </div>
-
-
-                <div class="panel-card">
-
-                    <h3>Record Activity</h3>
-
-                    <form id="fitness-form">
-
-                        <div class="form-field">
-                            <label for="fitness-activity">
-                                Activity
-                            </label>
-
-                            <select id="fitness-activity" required>
-                                <option value="">Choose activity</option>
-                                <option value="walking">Walking</option>
-                                <option value="running">Running</option>
-                                <option value="stretching">Stretching</option>
-                                <option value="exercise">General exercise</option>
-                                <option value="other">Other</option>
-                            </select>
-                        </div>
-
-                        <div class="form-field">
-                            <label for="fitness-minutes">
-                                Duration (minutes)
-                            </label>
-
-                            <input id="fitness-minutes"
-                                   type="number"
-                                   min="1"
-                                   max="1440"
-                                   required
-                                   placeholder="e.g. 20"
-                                   inputmode="numeric">
-                        </div>
-
-                        <button class="primary-button"
-                                type="submit">
-                            Save Activity
-                        </button>
-
-                    </form>
-
-                </div>
-
-
-                <div class="panel-card">
-                    <h3>Activity History</h3>
-
-                    <div id="fitness-history"
-                         class="history-list">
-                    </div>
-                </div>
-
-            </section>
-
-
-            <!-- =========================================
-                 SYMPTOM JOURNAL
-            ========================================== -->
-
-            <section id="page-symptoms"
-                     class="page-section">
-
-                <div class="page-title-row">
-                    <div>
-                        <div class="eyebrow">PERSONAL HEALTH NOTES</div>
-                        <h2>Symptom Journal</h2>
-
-                        <p>
-                            Record symptoms to help you remember
-                            what to discuss with a health professional.
-                        </p>
-                    </div>
-                </div>
-
-
-                <div class="panel-card">
-
-                    <form id="symptom-form">
-
-                        <div class="form-field">
-                            <label for="symptom-name">
-                                Symptom
-                            </label>
-
-                            <input id="symptom-name"
-                                   type="text"
-                                   maxlength="150"
-                                   required
-                                   placeholder="Describe the symptom">
-                        </div>
-
-                        <div class="form-field">
-                            <label for="symptom-severity">
-                                Severity
-                            </label>
-
-                            <select id="symptom-severity" required>
-                                <option value="">Choose severity</option>
-                                <option value="mild">Mild</option>
-                                <option value="moderate">Moderate</option>
-                                <option value="severe">Severe</option>
-                            </select>
-                        </div>
-
-                        <div class="form-field">
-                            <label for="symptom-duration">
-                                How long?
-                            </label>
-
-                            <input id="symptom-duration"
-                                   type="text"
-                                   maxlength="150"
-                                   required
-                                   placeholder="e.g. Since this morning">
-                        </div>
-
-                        <div class="form-field">
-                            <label for="symptom-notes">
-                                Additional notes
-                            </label>
-
-                            <textarea id="symptom-notes"
-                                      rows="3"
-                                      maxlength="1000"
-                                      placeholder="Optional details"></textarea>
-                        </div>
-
-                        <button class="primary-button"
-                                type="submit">
-                            Save Symptom
-                        </button>
-
-                    </form>
-
-                </div>
-
-
-                <div class="panel-card">
-                    <h3>Recorded Symptoms</h3>
-
-                    <div id="symptom-history"
-                         class="history-list">
-                    </div>
-                </div>
-
-            </section>
-
-
-            <!-- =========================================
-                 HEALTH MEASUREMENTS
-            ========================================== -->
-
-            <section id="page-vitals"
-                     class="page-section">
-
-                <div class="page-title-row">
-                    <div>
-                        <div class="eyebrow">PERSONAL HEALTH RECORDS</div>
-                        <h2>Health Measurements</h2>
-
-                        <p>
-                            Record readings from appropriate
-                            measurement devices.
-                        </p>
-                    </div>
-                </div>
-
-
-                <div class="notice-panel">
-                    <span class="notice-icon">ⓘ</span>
-
-                    <div>
-                        <strong>Use appropriate devices</strong>
-
-                        <p>
-                            A regular phone camera cannot reliably
-                            measure blood pressure, blood oxygen
-                            or body temperature. Enter readings
-                            from suitable devices instead.
-                        </p>
-                    </div>
-                </div>
-
-
-                <div class="panel-card">
-
-                    <form id="vitals-form">
-
-                        <div class="form-field">
-                            <label for="vital-type">
-                                Measurement type
-                            </label>
-
-                            <select id="vital-type" required>
-                                <option value="">Choose measurement</option>
-                                <option value="blood-pressure">
-                                    Blood pressure
-                                </option>
-                                <option value="spo2">
-                                    Blood oxygen (SpO₂)
-                                </option>
-                                <option value="temperature">
-                                    Body temperature
-                                </option>
-                                <option value="weight">
-                                    Weight
-                                </option>
-                            </select>
-                        </div>
-
-                        <div id="blood-pressure-fields"
-                             class="vital-specific-fields hidden">
-
-                            <div class="form-field">
-                                <label for="systolic">
-                                    Systolic (mmHg)
-                                </label>
-
-                                <input id="systolic"
-                                       type="number"
-                                       min="40"
-                                       max="300"
-                                       inputmode="numeric">
-                            </div>
-
-                            <div class="form-field">
-                                <label for="diastolic">
-                                    Diastolic (mmHg)
-                                </label>
-
-                                <input id="diastolic"
-                                       type="number"
-                                       min="20"
-                                       max="200"
-                                       inputmode="numeric">
-                            </div>
-
-                        </div>
-
-
-                        <div id="single-vital-field"
-                             class="vital-specific-fields hidden">
-
-                            <div class="form-field">
-                                <label for="vital-value"
-                                       id="vital-value-label">
-                                    Value
-                                </label>
-
-                                <input id="vital-value"
-                                       type="number"
-                                       step="0.1"
-                                       inputmode="decimal">
-                            </div>
-
-                            <div class="form-field">
-                                <label for="vital-unit">
-                                    Unit
-                                </label>
-
-                                <select id="vital-unit">
-                                    <option value="percent">%</option>
-                                    <option value="celsius">°C</option>
-                                    <option value="fahrenheit">°F</option>
-                                    <option value="kg">kg</option>
-                                </select>
-                            </div>
-
-                        </div>
-
-
-                        <button class="primary-button"
-                                type="submit">
-                            Save Measurement
-                        </button>
-
-                    </form>
-
-                </div>
-
-
-                <div class="panel-card">
-                    <h3>Measurement History</h3>
-
-                    <div id="vitals-history"
-                         class="history-list">
-                    </div>
-                </div>
-
-            </section>
-
-
-            <!-- =========================================
-                 NUTRITION & WATER
-            ========================================== -->
-
-            <section id="page-nutrition"
-                     class="page-section">
-
-                <div class="page-title-row">
-                    <div>
-                        <div class="eyebrow">DAILY HABITS</div>
-                        <h2>Nutrition & Water</h2>
-
-                        <p>
-                            Keep a simple record of water and meals.
-                        </p>
-                    </div>
-                </div>
-
-
-                <div class="two-column-grid">
-
-                    <div class="panel-card">
-
-                        <h3>Water Tracker</h3>
-
-                        <div class="water-display">
-                            <strong id="water-total">0</strong>
-                            <span>ml recorded today</span>
-                        </div>
-
-                        <div class="water-actions">
-
-                            <button class="secondary-button"
-                                    data-water="150"
-                                    type="button">
-                                +150 ml
-                            </button>
-
-                            <button class="secondary-button"
-                                    data-water="250"
-                                    type="button">
-                                +250 ml
-                            </button>
-
-                            <button class="secondary-button"
-                                    data-water="500"
-                                    type="button">
-                                +500 ml
-                            </button>
-
-                        </div>
-
-                        <form id="water-form">
-
-                            <div class="form-field">
-                                <label for="water-custom">
-                                    Custom amount (ml)
-                                </label>
-
-                                <input id="water-custom"
-                                       type="number"
-                                       min="1"
-                                       max="5000"
-                                       placeholder="Enter amount"
-                                       inputmode="numeric">
-                            </div>
-
-                            <button class="primary-button"
-                                    type="submit">
-                                Add Water
-                            </button>
-
-                        </form>
-
-                    </div>
-
-
-                    <div class="panel-card">
-
-                        <h3>Meal Journal</h3>
-
-                        <form id="meal-form">
-
-                            <div class="form-field">
-                                <label for="meal-type">
-                                    Meal
-                                </label>
-
-                                <select id="meal-type" required>
-                                    <option value="">Choose meal</option>
-                                    <option value="breakfast">Breakfast</option>
-                                    <option value="lunch">Lunch</option>
-                                    <option value="dinner">Dinner</option>
-                                    <option value="snack">Snack</option>
-                                </select>
-                            </div>
-
-                            <div class="form-field">
-                                <label for="meal-description">
-                                    What did you eat?
-                                </label>
-
-                                <textarea id="meal-description"
-                                          rows="3"
-                                          maxlength="500"
-                                          required
-                                          placeholder="Describe your meal"></textarea>
-                            </div>
-
-                            <button class="primary-button"
-                                    type="submit">
-                                Save Meal
-                            </button>
-
-                        </form>
-
-                    </div>
-
-                </div>
-
-
-                <div class="panel-card">
-                    <h3>Meal History</h3>
-
-                    <div id="meal-history"
-                         class="history-list">
-                    </div>
-                </div>
-
-            </section>
-
-
-            <!-- =========================================
-                 MEDICATION REMINDERS
-            ========================================== -->
-
-            <section id="page-medication"
-                     class="page-section">
-
-                <div class="page-title-row">
-                    <div>
-                        <div class="eyebrow">PERSONAL REMINDERS</div>
-                        <h2>Medication Reminders</h2>
-
-                        <p>
-                            Record medication instructions you
-                            have already received from a clinician.
-                        </p>
-                    </div>
-                </div>
-
-
-                <div class="notice-panel">
-                    <span class="notice-icon">ⓘ</span>
-
-                    <div>
-                        <strong>Follow your prescription</strong>
-
-                        <p>
-                            This tool does not prescribe medication
-                            or recommend changing your dose.
-                            Follow your clinician's instructions
-                            and the medication label.
-                        </p>
-                    </div>
-                </div>
-
-
-                <div class="panel-card">
-
-                    <form id="medication-form">
-
-                        <div class="form-field">
-                            <label for="medication-name">
-                                Medication name
-                            </label>
-
-                            <input id="medication-name"
-                                   type="text"
-                                   maxlength="200"
-                                   required
-                                   placeholder="Enter medication name">
-                        </div>
-
-                        <div class="form-field">
-                            <label for="medication-instructions">
-                                Instructions
-                            </label>
-
-                            <input id="medication-instructions"
-                                   type="text"
-                                   maxlength="300"
-                                   required
-                                   placeholder="Enter prescribed instructions">
-                        </div>
-
-                        <div class="form-field">
-                            <label for="medication-time">
-                                Reminder time
-                            </label>
-
-                            <input id="medication-time"
-                                   type="time"
-                                   required>
-                        </div>
-
-                        <button class="primary-button"
-                                type="submit">
-                            Save Reminder
-                        </button>
-
-                    </form>
-
-                </div>
-
-
-                <div class="panel-card">
-                    <h3>Saved Reminders</h3>
-
-                    <div id="medication-history"
-                         class="history-list">
-                    </div>
-                </div>
-
-            </section>
-
-
-            <!-- =========================================
-                 HEALTH DEVICES
-            ========================================== -->
-
-            <section id="page-devices"
-                     class="page-section">
-
-                <div class="page-title-row">
-                    <div>
-                        <div class="eyebrow">CONNECTED HARDWARE</div>
-                        <h2>Health Devices</h2>
-
-                        <p>
-                            Check device compatibility and
-                            supported connection options.
-                        </p>
-                    </div>
-                </div>
-
-
-                <div class="device-grid">
-
-                    <article class="device-card">
-
-                        <span class="device-icon">⌚</span>
-
-                        <h3>Smartwatch</h3>
-
-                        <p>
-                            May provide heart-rate and activity
-                            records through a supported connection.
-                        </p>
-
-                        <span class="device-status"
-                              id="watch-device-status">
-                            Not connected
-                        </span>
-
-                        <button class="secondary-button full-width"
-                                data-device="watch"
-                                type="button">
-                            Check Support
-                        </button>
-
-                    </article>
-
-
-                    <article class="device-card">
-
-                        <span class="device-icon">♥</span>
-
-                        <h3>Pulse Oximeter</h3>
-
-                        <p>
-                            Use a compatible device for
-                            blood-oxygen readings.
-                        </p>
-
-                        <span class="device-status">
-                            External device required
-                        </span>
-
-                        <button class="secondary-button full-width"
-                                data-device="oximeter"
-                                type="button">
-                            Device Information
-                        </button>
-
-                    </article>
-
-
-                    <article class="device-card">
-
-                        <span class="device-icon">◈</span>
-
-                        <h3>Blood Pressure Monitor</h3>
-
-                        <p>
-                            Record readings from a suitable
-                            validated blood-pressure monitor.
-                        </p>
-
-                        <span class="device-status">
-                            External device required
-                        </span>
-
-                        <button class="secondary-button full-width"
-                                data-device="blood-pressure"
-                                type="button">
-                            Device Information
-                        </button>
-
-                    </article>
-
-
-                    <article class="device-card">
-
-                        <span class="device-icon">♧</span>
-
-                        <h3>Digital Scale</h3>
-
-                        <p>
-                            Use a scale to obtain an actual
-                            weight measurement.
-                        </p>
-
-                        <span class="device-status">
-                            Manual entry available
-                        </span>
-
-                        <button class="secondary-button full-width"
-                                data-device="scale"
-                                type="button">
-                            Device Information
-                        </button>
-
-                    </article>
-
-                </div>
-
-
-                <div class="panel-card">
-                    <h3>Connection Status</h3>
-
-                    <div id="device-message"
-                         class="result-message">
-                        No device connection has been established.
-                    </div>
-
-                    <p class="small-muted">
-                        Bluetooth and sensor access depend on
-                        your device, browser, permissions and
-                        supported communication protocols.
-                    </p>
-                </div>
-
-            </section>
-
-
-            <!-- =========================================
-                 HEALTH HISTORY
-            ========================================== -->
-
-            <section id="page-history"
-                     class="page-section">
-
-                <div class="page-title-row">
-                    <div>
-                        <div class="eyebrow">PERSONAL RECORDS</div>
-                        <h2>Health History</h2>
-
-                        <p>
-                            Review information saved by your
-                            wellness tools on this device.
-                        </p>
-                    </div>
-
-                    <button id="export-health-data"
-                            class="primary-button"
-                            type="button">
-                        Export Records
-                    </button>
-                </div>
-
-
-                <div class="history-summary-grid">
-
-                    <div class="history-summary-card">
-                        <span>♡</span>
-                        <strong id="history-heart-count">0</strong>
-                        <small>Heart records</small>
-                    </div>
-
-                    <div class="history-summary-card">
-                        <span>☻</span>
-                        <strong id="history-mood-count">0</strong>
-                        <small>Mood entries</small>
-                    </div>
-
-                    <div class="history-summary-card">
-                        <span>☾</span>
-                        <strong id="history-sleep-count">0</strong>
-                        <small>Sleep records</small>
-                    </div>
-
-                    <div class="history-summary-card">
-                        <span>♙</span>
-                        <strong id="history-scan-count">0</strong>
-                        <small>Scan sessions</small>
-                    </div>
-
-                </div>
-
-
-                <div class="panel-card">
-                    <h3>Recent Activity</h3>
-
-                    <div id="all-history"
-                         class="history-list">
-                    </div>
-                </div>
-
-
-                <div class="panel-card">
-
-                    <h3>Data Management</h3>
-
-                    <p>
-                        Export your records or delete saved
-                        wellness information from this device.
-                    </p>
-
-                    <div class="export-actions">
-
-                        <button id="export-history-json"
-                                class="secondary-button"
-                                type="button">
-                            Export JSON
-                        </button>
-
-                        <button id="export-history-csv"
-                                class="secondary-button"
-                                type="button">
-                            Export CSV
-                        </button>
-
-                        <button id="delete-health-history"
-                                class="danger-button"
-                                type="button">
-                            Delete Health History
-                        </button>
-
-                    </div>
-
-                    <p class="small-muted">
-                        Deleting website records does not delete
-                        files separately downloaded to your device.
-                    </p>
-
-                </div>
-
-            </section>
-
-
-            <!-- =========================================
-                 SETTINGS
-            ========================================== -->
-
-            <section id="page-settings"
-                     class="page-section">
-
-                <div class="page-title-row">
-                    <div>
-                        <div class="eyebrow">PERSONAL CONFIGURATION</div>
-                        <h2>Settings</h2>
-
-                        <p>
-                            Adjust the interface and available
-                            scanning options.
-                        </p>
-                    </div>
-                </div>
-
-
-                <div class="panel-card">
-
-                    <h3>Appearance</h3>
-
-                    <div class="settings-row">
-                        <div>
-                            <strong>Dark Theme</strong>
-                            <p>Use a dark interface.</p>
-                        </div>
-
-                        <input id="setting-dark-theme"
-                               type="checkbox"
-                               checked>
-                    </div>
-
-                    <div class="settings-row">
-                        <div>
-                            <strong>Reduced Animation</strong>
-                            <p>Reduce decorative movement.</p>
-                        </div>
-
-                        <input id="setting-reduced-motion"
-                               type="checkbox">
-                    </div>
-
-                </div>
-
-
-                <div class="panel-card">
-
-                    <h3>Scanning</h3>
-
-                    <div class="settings-row">
-                        <div>
-                            <strong>Mirror Camera</strong>
-                            <p>Mirror the camera preview.</p>
-                        </div>
-
-                        <input id="setting-mirror-camera"
-                               type="checkbox"
-                               checked>
-                    </div>
-
-                    <div class="settings-row">
-                        <div>
-                            <strong>Keep Screen Awake</strong>
-                            <p>Request a screen wake lock during use.</p>
-                        </div>
-
-                        <input id="setting-screen-awake"
-                               type="checkbox">
-                    </div>
-
-                    <div class="settings-row">
-                        <div>
-                            <strong>Automatic Viewer Rotation</strong>
-                            <p>Rotate the 3D viewer automatically.</p>
-                        </div>
-
-                        <input id="setting-auto-rotate"
-                               type="checkbox">
-                    </div>
-
-                    <div class="settings-row">
-                        <div>
-                            <strong>Save Captures</strong>
-                            <p>Allow capture files to be downloaded.</p>
-                        </div>
-
-                        <input id="setting-save-captures"
-                               type="checkbox"
-                               checked>
-                    </div>
-
-                </div>
-
-
-                <div class="panel-card">
-
-                    <h3>Measurement Units</h3>
-
-                    <div class="form-field">
-                        <label for="setting-units">
-                            Preferred units
-                        </label>
-
-                        <select id="setting-units">
-                            <option value="metric">Metric (cm, kg)</option>
-                            <option value="imperial">Imperial (in, lb)</option>
-                        </select>
-                    </div>
-
-                </div>
-
-
-                <div class="panel-card">
-
-                    <h3>Privacy & Data</h3>
-
-                    <div class="settings-row">
-                        <div>
-                            <strong>Local Data Storage</strong>
-                            <p>
-                                Save supported records in this
-                                browser on this device.
-                            </p>
-                        </div>
-
-                        <span class="status-pill">LOCAL</span>
-                    </div>
-
-                    <button id="settings-privacy"
-                            class="secondary-button"
-                            type="button">
-                        Open Privacy Controls
-                    </button>
-
-                </div>
-
-            </section>
-
-
-            <!-- =========================================
-                 PRIVACY MODAL
-            ========================================== -->
-
-            <div id="privacy-modal"
-                 class="modal-overlay"
-                 aria-hidden="true">
-
-                <div class="modal-card">
-
-                    <div class="modal-header">
-                        <h3>Privacy & Data Controls</h3>
-
-                        <button id="close-privacy"
-                                class="icon-button"
-                                type="button"
-                                aria-label="Close privacy controls">
-                            ✕
-                        </button>
-                    </div>
-
-                    <p>
-                        This website may store entries in your
-                        browser so you can view them later.
-                        Camera access requires your permission.
-                    </p>
-
-                    <div class="privacy-modal-item">
-                        <strong>Camera</strong>
-                        <span id="privacy-camera-status">
-                            Camera not active
-                        </span>
-                    </div>
-
-                    <div class="privacy-modal-item">
-                        <strong>Local health records</strong>
-                        <span>Stored in this browser when enabled</span>
-                    </div>
-
-                    <div class="privacy-modal-item">
-                        <strong>Face recognition</strong>
-                        <span>Not required by this application</span>
-                    </div>
-
-                    <button id="delete-local-data"
-                            class="danger-button full-width"
-                            type="button">
-                        Delete Saved Health Data
-                    </button>
-
-                    <p class="small-muted">
-                        This removes supported records saved
-                        by the website. It does not remove
-                        files you previously downloaded.
-                    </p>
-
-                </div>
-
-            </div>
-
-
-            <!-- =========================================
-                 GLOBAL NOTIFICATION
-            ========================================== -->
-
-            <div id="toast-container"
-                 class="toast-container"
-                 aria-live="polite"
-                 aria-atomic="true">
-            </div>
-
-
-            <!-- FOOTER -->
-
-            <footer class="app-footer">
-
-                <div class="footer-brand">
-                    <span class="footer-logo">N</span>
-                    <span>NAOL HEALTH SCANNER 3D</span>
-                </div>
-
-                <p>
-                    A personal wellness and educational
-                    visualization platform.
-                </p>
-
-                <p class="footer-disclaimer">
-                    Not a medical diagnostic device.
-                </p>
-
-            </footer>
+        <div class="card">
+
+          <h3 style="margin-bottom:12px;">
+            Data & Privacy
+          </h3>
+
+          <p style="font-size:12px;line-height:1.9;">
+            Photos and records may be stored in your
+            browser's local storage. Anyone who can access
+            this browser profile or device may be able to
+            access those records.
+          </p>
+
+          <div class="divider"></div>
+
+          <button
+            class="btn btn-danger"
+            id="clearLocalData"
+            data-action="clear-local-data"
+            type="button"
+          >
+            Clear Local Website Data
+          </button>
+
+          <p class="muted small" style="margin-top:10px;">
+            This may permanently remove saved photos,
+            diary entries and wellness records from this
+            browser. Download anything important first.
+          </p>
 
         </div>
 
-    </main>
+      </div>
+
+    </section>
+
+    <!-- ================= FOOTER ================= -->
+
+    <footer class="footer">
+
+      <span>
+        © <span id="footerYear">2026</span>
+        Naol Health Scanner 3D
+      </span>
+
+      <span>
+        Personal wellness tools · Not a medical diagnostic system
+      </span>
+
+    </footer>
+
+  </main>
 
 </div>
 
+<!-- Toast notifications -->
+
+<div
+  id="toastContainer"
+  aria-live="polite"
+  aria-atomic="true"
+></div>
 
 <!-- =====================================================
-     APPLICATION JAVASCRIPT
-===================================================== -->
+     JAVASCRIPT
+     Keep script.js in the same folder as index.html.
+     ===================================================== -->
 
-<script src="script.js" defer></script>
+<script src="./script.js" defer></script>
 
 </body>
 </html>
