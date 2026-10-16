@@ -2,1539 +2,911 @@
 
 /* ============================================================
    NAOL HEALTH SCANNER 3D
-   File: script.js
-
-   Features:
-   - Camera access and photo capture
-   - Four-angle capture workflow
-   - Three.js illustrative 3D avatar
-   - Anatomy education interactions
-   - Wellness self-checks
-   - Mood journal and fatigue self-assessment
-   - Breathing timer
-   - Hydration and sleep logs
-   - Local settings
-   - Report and image exports
+   Complete frontend JavaScript
+   Version: 1.0.0
 
    IMPORTANT:
-   This application is not a medical diagnostic device.
+   - Educational wellness application only.
+   - Does not diagnose diseases.
+   - Camera photos are processed locally in this browser.
+   - 3D body model is illustrative, not a medical scan.
    ============================================================ */
 
 document.addEventListener("DOMContentLoaded", () => {
-  initNaolHealthScanner();
-});
+  /* -------------------- UTILITIES -------------------- */
 
-function initNaolHealthScanner() {
-  const $ = (selector, root = document) =>
-    root.querySelector(selector);
-
+  const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) =>
     Array.from(root.querySelectorAll(selector));
 
-  const STORAGE = {
-    settings: "naolHealthSettingsV1",
-    mood: "naolHealthMoodV1",
-    wellness: "naolHealthWellnessV1",
-    hydration: "naolHealthHydrationV1",
-    sleep: "naolHealthSleepV1",
-    journal: "naolHealthJournalV1"
-  };
+  const byId = (id) => document.getElementById(id);
 
-  const state = {
-    cameraStream: null,
-    cameraFacing: "user",
-    cameraActive: false,
-    mirrored: true,
-    captures: {
-      front: null,
-      left: null,
-      right: null,
-      back: null
-    },
-    currentAngle: "front",
-    scanRunning: false,
-    scanProgress: 0,
-    scanTimer: null,
-    breathingTimer: null,
-    breathingInterval: null,
-    breathingSeconds: 0,
-    breathingRunning: false,
-    selectedMood: null,
-    three: null,
-    threeReady: false,
-    threeFailed: false,
-    avatar: null,
-    animationFrame: null,
-    currentAnatomy: "body",
-    settings: {
-      theme: "dark",
-      autoRotate: false,
-      showGrid: true,
-      mirrorCamera: true,
-      cameraResolution: "high",
-      rotationSpeed: 1,
-      autosave: true
+  const safeJSON = (value, fallback) => {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return fallback;
     }
   };
 
-  /* ==========================================================
-     SAFE STORAGE
-     ========================================================== */
+  const clamp = (value, min, max) =>
+    Math.min(max, Math.max(min, value));
 
-  function readJSON(key, fallback) {
+  const timestamp = () => new Date().toISOString();
+
+  const formatDate = (date = new Date()) =>
+    date.toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric"
+    });
+
+  const formatTime = (date = new Date()) =>
+    date.toLocaleTimeString(undefined, {
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+
+  const STORAGE_KEYS = {
+    settings: "naolHealthScanner.settings.v1",
+    captures: "naolHealthScanner.captures.v1",
+    wellness: "naolHealthScanner.wellness.v1",
+    hydration: "naolHealthScanner.hydration.v1",
+    mood: "naolHealthScanner.mood.v1",
+    sleep: "naolHealthScanner.sleep.v1"
+  };
+
+  function readStorage(key, fallback) {
     try {
-      const raw = localStorage.getItem(key);
-
-      if (!raw) return fallback;
-
-      return JSON.parse(raw);
-    } catch (error) {
-      console.warn("Local storage read failed:", error);
+      const value = localStorage.getItem(key);
+      return value === null ? fallback : safeJSON(value, fallback);
+    } catch {
       return fallback;
     }
   }
 
-  function saveJSON(key, value) {
+  function writeStorage(key, value) {
     try {
       localStorage.setItem(key, JSON.stringify(value));
       return true;
     } catch (error) {
-      console.warn("Local storage save failed:", error);
-      showToast(
-        "Data kuusuu hin dandeenye. Browser storage guutuu ta'uu danda'a.",
-        "warning"
-      );
+      console.warn("Local storage unavailable:", error);
+      notify("Could not save data in this browser.", "warning");
       return false;
     }
   }
 
-  state.settings = {
-    ...state.settings,
-    ...readJSON(STORAGE.settings, {})
+  const defaultSettings = {
+    theme: "dark",
+    autoRotate: true,
+    rotationSpeed: 0.5,
+    cameraFacing: "environment",
+    cameraWidth: 1280,
+    cameraHeight: 720,
+    scanSound: false,
+    autosave: true,
+    showGrid: true,
+    showSkeleton: false,
+    hydrationGoal: 8
   };
 
-  /* ==========================================================
-     TOAST NOTIFICATIONS
-     ========================================================== */
+  let settings = {
+    ...defaultSettings,
+    ...readStorage(STORAGE_KEYS.settings, {})
+  };
 
-  function showToast(message, type = "info") {
-    let container = $("#toastContainer") || $(".toast-container");
+  let captures = readStorage(STORAGE_KEYS.captures, []);
+  let wellnessEntries = readStorage(STORAGE_KEYS.wellness, []);
+  let hydrationEntries = readStorage(STORAGE_KEYS.hydration, []);
+  let moodEntries = readStorage(STORAGE_KEYS.mood, []);
+  let sleepEntries = readStorage(STORAGE_KEYS.sleep, []);
+
+  if (!Array.isArray(captures)) captures = [];
+  if (!Array.isArray(wellnessEntries)) wellnessEntries = [];
+  if (!Array.isArray(hydrationEntries)) hydrationEntries = [];
+  if (!Array.isArray(moodEntries)) moodEntries = [];
+  if (!Array.isArray(sleepEntries)) sleepEntries = [];
+
+  function saveSettings() {
+    writeStorage(STORAGE_KEYS.settings, settings);
+  }
+
+  /* -------------------- NOTIFICATIONS -------------------- */
+
+  let notificationTimer = null;
+
+  function notify(message, type = "info") {
+    let container =
+      byId("naol-toast-container") ||
+      $(".toast-container") ||
+      $("[data-toast-container]");
 
     if (!container) {
       container = document.createElement("div");
-      container.id = "toastContainer";
-      container.className = "toast-container";
-      container.setAttribute("aria-live", "polite");
+      container.id = "naol-toast-container";
+
+      Object.assign(container.style, {
+        position: "fixed",
+        top: "16px",
+        right: "16px",
+        zIndex: "99999",
+        display: "flex",
+        flexDirection: "column",
+        gap: "8px",
+        maxWidth: "min(360px, calc(100vw - 32px))",
+        pointerEvents: "none"
+      });
+
       document.body.appendChild(container);
     }
 
     const toast = document.createElement("div");
-    toast.className = `toast ${type}`;
+    toast.setAttribute("role", "status");
+    toast.textContent = message;
 
-    const icon = document.createElement("span");
-    icon.textContent =
-      type === "success" ? "✓" :
-      type === "error" ? "!" :
-      type === "warning" ? "⚠" : "ℹ";
+    const background =
+      type === "error"
+        ? "#7f1d1d"
+        : type === "success"
+        ? "#065f46"
+        : type === "warning"
+        ? "#854d0e"
+        : "#172554";
 
-    const text = document.createElement("span");
-    text.textContent = String(message);
+    Object.assign(toast.style, {
+      color: "#ffffff",
+      background,
+      padding: "12px 16px",
+      borderRadius: "12px",
+      boxShadow: "0 8px 24px rgba(0,0,0,.28)",
+      fontSize: "14px",
+      lineHeight: "1.45",
+      overflowWrap: "anywhere",
+      opacity: "0",
+      transform: "translateY(-8px)",
+      transition: "opacity .2s ease, transform .2s ease",
+      pointerEvents: "auto"
+    });
 
-    toast.append(icon, text);
     container.appendChild(toast);
+
+    requestAnimationFrame(() => {
+      toast.style.opacity = "1";
+      toast.style.transform = "translateY(0)";
+    });
 
     window.setTimeout(() => {
       toast.style.opacity = "0";
-      toast.style.transform = "translateY(8px)";
+      toast.style.transform = "translateY(-8px)";
 
       window.setTimeout(() => toast.remove(), 250);
-    }, 3600);
+    }, 3500);
   }
 
-  /* ==========================================================
-     GENERAL UTILITIES
-     ========================================================== */
+  /* -------------------- CLOCK AND DASHBOARD -------------------- */
 
-  function formatDate(date = new Date()) {
-    return new Intl.DateTimeFormat(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric"
-    }).format(date);
-  }
-
-  function formatTime(date = new Date()) {
-    return new Intl.DateTimeFormat(undefined, {
-      hour: "2-digit",
-      minute: "2-digit"
-    }).format(date);
-  }
-
-  function escapeHTML(value) {
-    return String(value).replace(/[&<>"']/g, character => ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#039;"
-    })[character]);
-  }
-
-  function setText(selectors, value) {
-    const list = Array.isArray(selectors) ? selectors : [selectors];
-
-    list.forEach(selector => {
-      $$(selector).forEach(element => {
-        element.textContent = value;
-      });
-    });
-  }
-
-  function setProgress(percent, selectors = [
-    "#scanProgress",
-    "#progressBar",
-    ".progress-bar"
-  ]) {
-    const value = Math.max(0, Math.min(100, Number(percent) || 0));
-
-    selectors.forEach(selector => {
-      $$(selector).forEach(element => {
-        element.style.width = `${value}%`;
-        element.setAttribute("aria-valuenow", String(value));
-      });
-    });
-
-    setText(
-      ["#scanProgressText", "#progressText", "[data-scan-progress-text]"],
-      `${Math.round(value)}%`
-    );
-  }
-
-  function downloadBlob(blob, filename) {
-    if (!(blob instanceof Blob)) {
-      showToast("File uumuun hin danda'amne.", "error");
-      return;
-    }
-
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-
-    anchor.href = url;
-    anchor.download = filename;
-    anchor.style.display = "none";
-
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-
-    window.setTimeout(() => URL.revokeObjectURL(url), 1500);
-  }
-
-  function downloadText(text, filename, mime = "text/plain") {
-    downloadBlob(
-      new Blob([text], { type: `${mime};charset=utf-8` }),
-      filename
-    );
-  }
-
-  function getTodayKey() {
+  function updateClock() {
     const now = new Date();
 
-    return [
-      now.getFullYear(),
-      String(now.getMonth() + 1).padStart(2, "0"),
-      String(now.getDate()).padStart(2, "0")
-    ].join("-");
-  }
-
-  function isSecureCameraContext() {
-    return window.isSecureContext ||
-      location.hostname === "localhost" ||
-      location.hostname === "127.0.0.1";
-  }
-
-  /* ==========================================================
-     NAVIGATION
-     ========================================================== */
-
-  function closeSidebar() {
-    $(".sidebar")?.classList.remove("open");
-    $(".mobile-sidebar-overlay")?.classList.remove("active");
-  }
-
-  function openSidebar() {
-    $(".sidebar")?.classList.add("open");
-    $(".mobile-sidebar-overlay")?.classList.add("active");
-  }
-
-  function navigateTo(target) {
-    if (!target) return;
-
-    const normalized = String(target).replace(/^#/, "");
-
-    let section =
-      document.getElementById(normalized) ||
-      $(`[data-section="${normalized}"]`);
-
-    if (!section && normalized.startsWith("section-")) {
-      section = document.getElementById(normalized);
-    }
-
-    if (!section) {
-      showToast("Kutaan barbaadde HTML keessatti hin argamne.", "warning");
-      return;
-    }
-
-    section.scrollIntoView({
-      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
-        ? "auto"
-        : "smooth",
-      block: "start"
-    });
-
-    closeSidebar();
-
-    $$(".nav-link, .sidebar-nav a, .sidebar-nav button").forEach(link => {
-      const linkTarget =
-        link.dataset.target ||
-        link.dataset.section ||
-        link.getAttribute("href")?.replace(/^#/, "");
-
-      link.classList.toggle("active", linkTarget === normalized);
-    });
-  }
-
-  function initNavigation() {
-    const menuButton =
-      $("#menuToggle") ||
-      $(".menu-toggle") ||
-      $('[data-action="menu"]');
-
-    menuButton?.addEventListener("click", () => {
-      const sidebar = $(".sidebar");
-
-      if (sidebar?.classList.contains("open")) {
-        closeSidebar();
-      } else {
-        openSidebar();
-      }
-    });
-
-    $(".mobile-sidebar-overlay")?.addEventListener("click", closeSidebar);
-
-    $$("[data-target], [data-section-target], .nav-link").forEach(element => {
-      element.addEventListener("click", event => {
-        const target =
-          element.dataset.target ||
-          element.dataset.sectionTarget ||
-          element.dataset.section ||
-          element.getAttribute("href")?.replace(/^#/, "");
-
-        if (!target) return;
-
-        const destination =
-          document.getElementById(target) ||
-          $(`[data-section="${target}"]`);
-
-        if (destination) {
-          event.preventDefault();
-          navigateTo(target);
-        }
-      });
-    });
-
-    $$('a[href^="#"]').forEach(anchor => {
-      anchor.addEventListener("click", event => {
-        const target = anchor.getAttribute("href")?.slice(1);
-
-        if (!target) return;
-
-        if (document.getElementById(target)) {
-          event.preventDefault();
-          navigateTo(target);
-        }
-      });
-    });
-
-    document.addEventListener("keydown", event => {
-      if (event.key === "Escape") {
-        closeSidebar();
-        closeAllDialogs();
-      }
-    });
-  }
-
-  /* ==========================================================
-     DIALOGS / MODALS
-     ========================================================== */
-
-  function closeAllDialogs() {
-    $$("dialog[open]").forEach(dialog => {
-      dialog.close();
-    });
-
-    $$(".modal.open").forEach(modal => {
-      modal.classList.remove("open");
-    });
-  }
-
-  function openDialog(dialog) {
-    if (!dialog) return;
-
-    if (typeof dialog.showModal === "function") {
-      if (!dialog.open) dialog.showModal();
-    } else {
-      dialog.classList.add("open");
-    }
-  }
-
-  function initDialogs() {
-    $$("[data-open-dialog]").forEach(button => {
-      button.addEventListener("click", () => {
-        const id = button.dataset.openDialog;
-        openDialog(document.getElementById(id));
-      });
-    });
-
-    $$("[data-close-dialog]").forEach(button => {
-      button.addEventListener("click", () => {
-        const dialog = button.closest("dialog");
-
-        if (dialog?.open) dialog.close();
-
-        button.closest(".modal")?.classList.remove("open");
-      });
-    });
-
-    $$("dialog").forEach(dialog => {
-      dialog.addEventListener("click", event => {
-        if (event.target === dialog) {
-          dialog.close();
-        }
-      });
-    });
-  }
-
-  /* ==========================================================
-     THEME AND SETTINGS
-     ========================================================== */
-
-  function applyTheme(theme) {
-    const selected = theme === "light" ? "light" : "dark";
-
-    document.documentElement.dataset.theme = selected;
-    state.settings.theme = selected;
-
-    $$('[data-setting="theme"]').forEach(select => {
-      select.value = selected;
-    });
-
-    const themeButton = $("#themeToggle");
-
-    if (themeButton) {
-      themeButton.textContent = selected === "dark" ? "☀️" : "🌙";
-      themeButton.setAttribute(
-        "aria-label",
-        selected === "dark" ? "Light theme" : "Dark theme"
-      );
-    }
-
-    saveJSON(STORAGE.settings, state.settings);
-  }
-
-  function initSettings() {
-    applyTheme(state.settings.theme);
-
-    const themeButton =
-      $("#themeToggle") ||
-      $('[data-action="theme-toggle"]');
-
-    themeButton?.addEventListener("click", () => {
-      applyTheme(state.settings.theme === "dark" ? "light" : "dark");
-    });
-
-    $$('[data-setting="theme"]').forEach(select => {
-      select.addEventListener("change", () => {
-        applyTheme(select.value);
-      });
-    });
-
-    $$("[data-setting]").forEach(element => {
-      const key = element.dataset.setting;
-
-      if (!(key in state.settings) || key === "theme") return;
-
-      if (element.type === "checkbox") {
-        element.checked = Boolean(state.settings[key]);
-      } else {
-        element.value = String(state.settings[key]);
-      }
-
-      const updateSetting = () => {
-        let value;
-
-        if (element.type === "checkbox") {
-          value = element.checked;
-        } else if (element.type === "range" || element.type === "number") {
-          value = Number(element.value);
-        } else {
-          value = element.value;
-        }
-
-        state.settings[key] = value;
-        saveJSON(STORAGE.settings, state.settings);
-
-        if (key === "mirrorCamera") {
-          state.mirrored = Boolean(value);
-          applyCameraMirror();
-        }
-
-        if (key === "autoRotate" && state.three) {
-          state.three.controls.autoRotate = Boolean(value);
-        }
-
-        if (key === "rotationSpeed" && state.three) {
-          state.three.controls.autoRotateSpeed = Number(value);
-        }
-
-        if (key === "showGrid" && state.three) {
-          if (state.three.grid) {
-            state.three.grid.visible = Boolean(value);
-          }
-        }
-      };
-
-      element.addEventListener("change", updateSetting);
-      element.addEventListener("input", updateSetting);
-    });
-
-    $("#clearLocalData")?.addEventListener("click", clearLocalData);
-    $('[data-action="clear-data"]')?.addEventListener("click", clearLocalData);
-  }
-
-  function clearLocalData() {
-    const confirmed = window.confirm(
-      "Data Naol Health Scanner 3D browser keessatti kuufame hunda haqxuuf mirkaneessaa?"
-    );
-
-    if (!confirmed) return;
-
-    Object.values(STORAGE).forEach(key => {
-      try {
-        localStorage.removeItem(key);
-      } catch (error) {
-        console.warn(error);
-      }
-    });
-
-    state.captures = {
-      front: null,
-      left: null,
-      right: null,
-      back: null
-    };
-
-    renderCaptures();
-    renderMoodHistory();
-    renderHydrationHistory();
-    renderSleepHistory();
-
-    state.settings = {
-      theme: "dark",
-      autoRotate: false,
-      showGrid: true,
-      mirrorCamera: true,
-      cameraResolution: "high",
-      rotationSpeed: 1,
-      autosave: true
-    };
-
-    saveJSON(STORAGE.settings, state.settings);
-    applyTheme("dark");
-
-    showToast("Data browser keessatti kuufame haqame.", "success");
-  }
-
-  /* ==========================================================
-     CAMERA
-     ========================================================== */
-
-  function getVideoElement() {
-    return (
-      $("#cameraVideo") ||
-      $("#cameraFeed") ||
-      $("#cameraPreview") ||
-      $(".camera-stage video")
-    );
-  }
-
-  function getCameraStage() {
-    return $(".camera-stage") || $("#cameraStage");
-  }
-
-  function getCameraConstraints() {
-    let width = 1280;
-    let height = 720;
-
-    if (state.settings.cameraResolution === "low") {
-      width = 640;
-      height = 480;
-    } else if (state.settings.cameraResolution === "medium") {
-      width = 960;
-      height = 540;
-    }
-
-    return {
-      audio: false,
-      video: {
-        facingMode: { ideal: state.cameraFacing },
-        width: { ideal: width },
-        height: { ideal: height }
-      }
-    };
-  }
-
-  function applyCameraMirror() {
-    const video = getVideoElement();
-
-    if (!video) return;
-
-    const mirror =
-      state.cameraFacing === "user" &&
-      state.settings.mirrorCamera !== false;
-
-    video.style.transform = mirror ? "scaleX(-1)" : "none";
-  }
-
-  function setCameraStatus(message, type = "info") {
-    const targets = [
-      "#cameraStatus",
-      "#cameraStatusText",
-      "[data-camera-status]"
+    const clockTargets = [
+      "liveClock",
+      "currentTime",
+      "dashboardClock",
+      "clock",
+      "timeDisplay"
     ];
 
-    targets.forEach(selector => {
-      $$(selector).forEach(element => {
-        element.textContent = message;
+    clockTargets.forEach((id) => {
+      const element = byId(id);
+      if (element) element.textContent = formatTime(now);
+    });
 
-        if (element.classList.contains("badge")) {
-          element.classList.remove(
-            "badge-primary",
-            "badge-green",
-            "badge-red",
-            "badge-yellow"
-          );
+    const dateTargets = [
+      "currentDate",
+      "dashboardDate",
+      "todayDate",
+      "dateDisplay"
+    ];
 
-          if (type === "success") {
-            element.classList.add("badge-green");
-          } else if (type === "error") {
-            element.classList.add("badge-red");
-          } else if (type === "warning") {
-            element.classList.add("badge-yellow");
-          } else {
-            element.classList.add("badge-primary");
-          }
-        }
+    dateTargets.forEach((id) => {
+      const element = byId(id);
+      if (element) element.textContent = formatDate(now);
+    });
+  }
+
+  updateClock();
+  window.setInterval(updateClock, 1000);
+
+  function updateDashboard() {
+    const today = new Date().toDateString();
+
+    const todayWellness = wellnessEntries.filter((entry) => {
+      const date = new Date(entry.createdAt);
+      return !Number.isNaN(date.getTime()) &&
+        date.toDateString() === today;
+    });
+
+    const todayCaptures = captures.filter((capture) => {
+      const date = new Date(capture.createdAt);
+      return !Number.isNaN(date.getTime()) &&
+        date.toDateString() === today;
+    });
+
+    const counters = {
+      totalCaptures: captures.length,
+      todayCaptures: todayCaptures.length,
+      totalWellness: wellnessEntries.length,
+      todayWellness: todayWellness.length,
+      waterToday: getWaterToday(),
+      hydrationGoal: Number(settings.hydrationGoal) || 8
+    };
+
+    const idValues = {
+      totalCaptures: counters.totalCaptures,
+      totalScans: counters.totalCaptures,
+      todayCaptures: counters.todayCaptures,
+      todayScans: counters.todayCaptures,
+      wellnessChecks: counters.totalWellness,
+      totalWellness: counters.totalWellness,
+      waterToday: counters.waterToday,
+      waterCount: counters.waterToday,
+      hydrationGoal: counters.hydrationGoal
+    };
+
+    Object.entries(idValues).forEach(([id, value]) => {
+      const element = byId(id);
+      if (element) element.textContent = String(value);
+    });
+
+    const progress = byId("hydrationProgress");
+
+    if (progress) {
+      const percentage = clamp(
+        (counters.waterToday / Math.max(1, counters.hydrationGoal)) * 100,
+        0,
+        100
+      );
+
+      progress.style.width = `${percentage}%`;
+      progress.setAttribute("aria-valuenow", String(percentage));
+    }
+
+    renderCaptureGallery();
+  }
+
+  /* -------------------- NAVIGATION -------------------- */
+
+  function showSection(sectionName) {
+    if (!sectionName) return;
+
+    const normalized = String(sectionName)
+      .replace(/^#/, "")
+      .replace(/^(section-|page-)/, "");
+
+    const sections = $$(
+      "main section[id], [data-page], .page-section, .app-section"
+    );
+
+    let matched = false;
+
+    sections.forEach((section) => {
+      const sectionId = section.id || "";
+      const dataPage = section.getAttribute("data-page") || "";
+
+      const active =
+        sectionId === normalized ||
+        sectionId === `section-${normalized}` ||
+        sectionId === `page-${normalized}` ||
+        dataPage === normalized;
+
+      if (active) matched = true;
+
+      if (
+        section.matches("[data-page]") ||
+        section.matches(".page-section") ||
+        section.matches(".app-section")
+      ) {
+        section.hidden = !active;
+      } else if (sectionId.startsWith("section-") ||
+                 sectionId.startsWith("page-")) {
+        section.hidden = !active;
+      }
+    });
+
+    $$("[data-section], [data-page-link], .nav-link, .sidebar-link")
+      .forEach((button) => {
+        const target =
+          button.dataset.section ||
+          button.dataset.pageLink ||
+          button.getAttribute("href")?.replace(/^#/, "");
+
+        const active =
+          target === normalized ||
+          target === `section-${normalized}` ||
+          target === `page-${normalized}`;
+
+        button.classList.toggle("active", active);
+
+        if (active) button.setAttribute("aria-current", "page");
+        else button.removeAttribute("aria-current");
       });
+
+    const mobileMenu = byId("mobileMenu") || byId("sidebar");
+
+    if (mobileMenu) {
+      mobileMenu.classList.remove("open");
+      mobileMenu.classList.remove("active");
+    }
+
+    if (matched) {
+      const target = byId(normalized) ||
+        byId(`section-${normalized}`) ||
+        byId(`page-${normalized}`);
+
+      if (target && window.matchMedia("(max-width: 768px)").matches) {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }
+  }
+
+  /* -------------------- CAMERA SYSTEM -------------------- */
+
+  let cameraStream = null;
+  let cameraFacing = settings.cameraFacing || "environment";
+  let cameraActive = false;
+  let cameraStarting = false;
+  let cameraAnimationFrame = null;
+  let lastCapturedDataUrl = null;
+
+  const video =
+    byId("cameraVideo") ||
+    byId("camera") ||
+    byId("videoElement") ||
+    $("video[data-camera]");
+
+  const cameraCanvas =
+    byId("cameraCanvas") ||
+    byId("captureCanvas") ||
+    document.createElement("canvas");
+
+  const cameraContext = cameraCanvas.getContext("2d", {
+    alpha: false
+  });
+
+  function updateCameraStatus(message, state = "idle") {
+    const ids = [
+      "cameraStatus",
+      "cameraMessage",
+      "scanStatus",
+      "cameraState"
+    ];
+
+    ids.forEach((id) => {
+      const element = byId(id);
+      if (element) {
+        element.textContent = message;
+        element.dataset.state = state;
+      }
+    });
+
+    $$("[data-camera-status]").forEach((element) => {
+      element.textContent = message;
+      element.dataset.state = state;
+    });
+  }
+
+  function updateCameraButtons() {
+    const startButtons = [
+      "startCamera",
+      "startCameraBtn",
+      "openCamera",
+      "cameraStart"
+    ];
+
+    const stopButtons = [
+      "stopCamera",
+      "stopCameraBtn",
+      "cameraStop"
+    ];
+
+    startButtons.forEach((id) => {
+      const element = byId(id);
+      if (element) element.disabled = cameraActive || cameraStarting;
+    });
+
+    stopButtons.forEach((id) => {
+      const element = byId(id);
+      if (element) element.disabled = !cameraActive;
     });
   }
 
   async function startCamera() {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      showToast(
-        "Browser kun camera hin deeggaru. Browser ammayyaa fayyadami.",
+    if (cameraStarting) return;
+
+    if (!navigator.mediaDevices ||
+        typeof navigator.mediaDevices.getUserMedia !== "function") {
+      notify(
+        "Camera is not available. Open this website using HTTPS and a supported browser.",
         "error"
       );
 
-      setCameraStatus("Camera browser kana irratti hin deeggaramu", "error");
+      updateCameraStatus("Camera unavailable — HTTPS may be required.", "error");
       return;
     }
-
-    if (!isSecureCameraContext()) {
-      showToast(
-        "Camera banuuf website HTTPS irratti banamuu qaba. GitHub Pages fayyadami.",
-        "error"
-      );
-
-      setCameraStatus("HTTPS barbaachisa", "error");
-      return;
-    }
-
-    if (state.cameraActive) {
-      showToast("Camera duraanuu banameera.", "info");
-      return;
-    }
-
-    const video = getVideoElement();
 
     if (!video) {
-      showToast(
-        "Video element hin argamne. index.html keessatti #cameraVideo barbaachisa.",
+      notify(
+        "Camera video element not found. Check index.html for the camera video element.",
         "error"
       );
       return;
     }
 
-    setCameraStatus("Camera banuuf yaalaa...");
-
-    const startButtons = [
-      "#startCamera",
-      "#cameraStart",
-      '[data-action="start-camera"]'
-    ];
-
-    startButtons.forEach(selector => {
-      $$(selector).forEach(button => {
-        button.disabled = true;
-        button.dataset.originalText ||= button.textContent;
-        button.textContent = "Camera banamaa jira...";
-      });
-    });
+    cameraStarting = true;
+    updateCameraButtons();
+    updateCameraStatus("Requesting camera permission…", "loading");
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia(
-        getCameraConstraints()
-      );
+      stopCamera(false);
 
-      state.cameraStream = stream;
-      state.cameraActive = true;
+      const constraints = {
+        audio: false,
+        video: {
+          facingMode: { ideal: cameraFacing },
+          width: { ideal: settings.cameraWidth || 1280 },
+          height: { ideal: settings.cameraHeight || 720 }
+        }
+      };
 
-      video.srcObject = stream;
+      cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+      video.srcObject = cameraStream;
       video.muted = true;
       video.playsInline = true;
       video.autoplay = true;
 
       await video.play();
 
-      state.mirrored = state.settings.mirrorCamera;
-      applyCameraMirror();
+      cameraActive = true;
+      cameraStarting = false;
 
-      const placeholder = $(".camera-placeholder");
-
-      if (placeholder) {
-        placeholder.hidden = true;
-      }
-
-      const grid = $(".camera-grid-overlay");
-
-      if (grid) grid.hidden = false;
-
-      const frame = $(".camera-frame");
-
-      if (frame) frame.hidden = false;
-
-      const stopButtons = [
-        "#stopCamera",
-        "#cameraStop",
-        '[data-action="stop-camera"]'
-      ];
-
-      stopButtons.forEach(selector => {
-        $$(selector).forEach(button => {
-          button.disabled = false;
-        });
-      });
-
-      startButtons.forEach(selector => {
-        $$(selector).forEach(button => {
-          button.disabled = false;
-          button.textContent = button.dataset.originalText || "Start Camera";
-        });
-      });
-
-      setCameraStatus("Camera hojiirra jira", "success");
-      showToast("Camera milkaa'inaan baname.", "success");
+      updateCameraStatus("Camera is active", "active");
+      updateCameraButtons();
+      drawCameraPreview();
+      notify("Camera started successfully.", "success");
     } catch (error) {
-      console.error("Camera error:", error);
+      cameraStarting = false;
+      cameraActive = false;
+      cameraStream = null;
 
-      state.cameraStream = null;
-      state.cameraActive = false;
+      updateCameraButtons();
 
-      startButtons.forEach(selector => {
-        $$(selector).forEach(button => {
-          button.disabled = false;
-          button.textContent = button.dataset.originalText || "Start Camera";
-        });
-      });
+      let message = "Unable to start the camera.";
 
-      let message = "Camera banuun hin danda'amne.";
-
-      if (
-        error.name === "NotAllowedError" ||
-        error.name === "PermissionDeniedError"
-      ) {
+      if (error?.name === "NotAllowedError" ||
+          error?.name === "PermissionDeniedError") {
         message =
-          "Hayyama camera kenni. Browser Settings keessatti camera permission ilaali.";
-      } else if (
-        error.name === "NotFoundError" ||
-        error.name === "DevicesNotFoundError"
-      ) {
-        message = "Camera bilbilaa hin argamne.";
-      } else if (error.name === "NotReadableError") {
-        message =
-          "Camera app biraan fayyadamaa jiraachuu danda'a. App sana cufiitii irra deebi'i.";
+          "Camera permission was denied. Allow camera access in your browser settings.";
+      } else if (error?.name === "NotFoundError") {
+        message = "No camera was found on this device.";
+      } else if (error?.name === "NotReadableError") {
+        message = "The camera may already be in use by another application.";
+      } else if (error?.name === "OverconstrainedError") {
+        message = "Requested camera settings are unavailable. Try another camera.";
+      } else if (error?.name === "SecurityError") {
+        message = "Camera access requires a secure HTTPS website.";
       }
 
-      setCameraStatus(message, "error");
-      showToast(message, "error");
+      updateCameraStatus(message, "error");
+      notify(message, "error");
+      console.error("Camera start failed:", error);
     }
   }
 
-  function stopCamera() {
-    if (state.cameraStream) {
-      state.cameraStream.getTracks().forEach(track => {
-        track.stop();
-      });
+  function stopCamera(showNotification = true) {
+    if (cameraAnimationFrame !== null) {
+      cancelAnimationFrame(cameraAnimationFrame);
+      cameraAnimationFrame = null;
     }
 
-    state.cameraStream = null;
-    state.cameraActive = false;
-
-    const video = getVideoElement();
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((track) => track.stop());
+      cameraStream = null;
+    }
 
     if (video) {
-      video.pause();
-      video.srcObject = null;
-      video.style.transform = "none";
-    }
-
-    const placeholder = $(".camera-placeholder");
-
-    if (placeholder) {
-      placeholder.hidden = false;
-    }
-
-    const grid = $(".camera-grid-overlay");
-
-    if (grid) grid.hidden = true;
-
-    const frame = $(".camera-frame");
-
-    if (frame) frame.hidden = true;
-
-    [
-      "#startCamera",
-      "#cameraStart",
-      '[data-action="start-camera"]'
-    ].forEach(selector => {
-      $$(selector).forEach(button => {
-        button.disabled = false;
-        button.textContent = button.dataset.originalText || "Start Camera";
-      });
-    });
-
-    [
-      "#stopCamera",
-      "#cameraStop",
-      '[data-action="stop-camera"]'
-    ].forEach(selector => {
-      $$(selector).forEach(button => {
-        button.disabled = true;
-      });
-    });
-
-    setCameraStatus("Camera cufameera");
-  }
-
-  function switchCamera() {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      showToast("Camera hin deeggaramu.", "error");
-      return;
-    }
-
-    const wasActive = state.cameraActive;
-
-    state.cameraFacing =
-      state.cameraFacing === "user" ? "environment" : "user";
-
-    if (wasActive) {
-      stopCamera();
-
-      window.setTimeout(() => {
-        startCamera();
-      }, 150);
-    } else {
-      state.mirrored = state.cameraFacing === "user";
-      showToast(
-        state.cameraFacing === "user"
-          ? "Front camera filatame."
-          : "Rear camera filatame. Amma Start Camera tuqi.",
-        "info"
-      );
-    }
-  }
-
-  function capturePhoto(angle = state.currentAngle) {
-    const video = getVideoElement();
-
-    if (!state.cameraActive || !video || video.readyState < 2) {
-      showToast(
-        "Dura camera bani, achiis suuraa qabi.",
-        "warning"
-      );
-      return null;
-    }
-
-    const width = video.videoWidth;
-    const height = video.videoHeight;
-
-    if (!width || !height) {
-      showToast("Suuraa qabachuuf video hin qophoofne.", "warning");
-      return null;
-    }
-
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-
-    const context = canvas.getContext("2d");
-
-    if (!context) {
-      showToast("Canvas hin deeggaramu.", "error");
-      return null;
-    }
-
-    const mirror =
-      state.cameraFacing === "user" &&
-      state.settings.mirrorCamera !== false;
-
-    if (mirror) {
-      context.translate(width, 0);
-      context.scale(-1, 1);
-    }
-
-    context.drawImage(video, 0, 0, width, height);
-
-    canvas.toBlob(blob => {
-      if (!blob) {
-        showToast("Suuraa file gochuun hin danda'amne.", "error");
-        return;
+      try {
+        video.pause();
+        video.srcObject = null;
+      } catch (error) {
+        console.warn("Could not reset camera video:", error);
       }
+    }
 
-      state.captures[angle] = {
-        blob,
-        dataUrl: canvas.toDataURL("image/jpeg", 0.9),
-        width,
-        height,
-        capturedAt: new Date().toISOString()
-      };
+    cameraActive = false;
 
-      renderCaptures();
-      updateCaptureProgress();
+    if (!cameraStarting) {
+      updateCameraStatus("Camera stopped", "idle");
+    }
 
-      showToast(
-        `${angleLabel(angle)} suuraa qabame.`,
-        "success"
-      );
-    }, "image/jpeg", 0.9);
+    updateCameraButtons();
 
-    return canvas;
-  }
-
-  function angleLabel(angle) {
-    const labels = {
-      front: "Fuuldura",
-      left: "Bitaa",
-      right: "Mirga",
-      back: "Duuba"
-    };
-
-    return labels[angle] || angle;
-  }
-
-  function renderCaptures() {
-    Object.entries(state.captures).forEach(([angle, capture]) => {
-      const selectors = [
-        `#capture-${angle}`,
-        `#capture${angle.charAt(0).toUpperCase()}${angle.slice(1)}`,
-        `[data-capture="${angle}"]`
-      ];
-
-      selectors.forEach(selector => {
-        $$(selector).forEach(slot => {
-          slot.classList.toggle("has-capture", Boolean(capture));
-
-          if (!capture) {
-            const title = angleLabel(angle);
-
-            slot.replaceChildren();
-
-            const icon = document.createElement("span");
-            icon.textContent = "＋";
-
-            const strong = document.createElement("strong");
-            strong.textContent = title;
-
-            const small = document.createElement("span");
-            small.textContent = "Suuraa hin qabamne";
-
-            slot.append(icon, strong, small);
-            return;
-          }
-
-          const image = document.createElement("img");
-          image.src = capture.dataUrl;
-          image.alt = `${angleLabel(angle)} capture`;
-
-          const title = document.createElement("strong");
-          title.textContent = angleLabel(angle);
-
-          const small = document.createElement("span");
-          small.textContent = "Suuraa qabame";
-
-          slot.replaceChildren(image, title, small);
-        });
-      });
-    });
-
-    updateCaptureProgress();
-  }
-
-  function updateCaptureProgress() {
-    const count = Object.values(state.captures).filter(Boolean).length;
-    const progress = count * 25;
-
-    setProgress(progress);
-
-    setText(
-      [
-        "#captureCount",
-        "#scanCaptureCount",
-        "[data-capture-count]"
-      ],
-      `${count}/4`
-    );
-
-    const startButton =
-      $("#startScan") ||
-      $('[data-action="start-scan"]');
-
-    if (startButton) {
-      startButton.disabled = count === 0 || state.scanRunning;
+    if (showNotification) {
+      notify("Camera stopped.");
     }
   }
 
-  function deleteCapture(angle) {
-    if (!state.captures[angle]) return;
+  function drawCameraPreview() {
+    if (!cameraActive || !video || video.readyState < 2) return;
 
-    state.captures[angle] = null;
-
-    renderCaptures();
-    showToast(`${angleLabel(angle)} capture haqame.`, "success");
-  }
-
-  function downloadCapture(angle) {
-    const capture = state.captures[angle];
-
-    if (!capture) {
-      showToast("Suuraa kana dura qabachuu qabda.", "warning");
-      return;
-    }
-
-    downloadBlob(
-      capture.blob,
-      `naol-health-${angle}-${Date.now()}.jpg`
-    );
-  }
-
-  function downloadAllCaptures() {
-    const captures = Object.entries(state.captures)
-      .filter(([, capture]) => capture);
-
-    if (!captures.length) {
-      showToast("Suuraa buufachuuf hin jiru.", "warning");
-      return;
-    }
-
-    captures.forEach(([angle], index) => {
-      window.setTimeout(() => downloadCapture(angle), index * 350);
-    });
-  }
-
-  /* ==========================================================
-     SCAN WORKFLOW
-     ========================================================== */
-
-  function startScanWorkflow() {
-    if (state.scanRunning) return;
-
-    const captures = Object.values(state.captures)
-      .filter(Boolean).length;
-
-    if (captures === 0) {
-      showToast(
-        "Dura camera baniitii yoo xiqqaate suuraa tokko qabi.",
-        "warning"
-      );
-      return;
-    }
-
-    state.scanRunning = true;
-    state.scanProgress = 0;
-
-    const stage = getCameraStage();
-
-    stage?.classList.add("scanning");
-
-    const statusMessages = [
-      "Suuraa qabame qindeessaa...",
-      "Suuraa fi framing ilaalamaa...",
-      "Scan progress qopheessaa...",
-      "Capture workflow xumuramaa jira..."
-    ];
-
-    const statusElement = $("#scanStatusText");
-
-    const startButton =
-      $("#startScan") ||
-      $('[data-action="start-scan"]');
-
-    if (startButton) startButton.disabled = true;
-
-    const step = () => {
-      if (!state.scanRunning) return;
-
-      state.scanProgress += 5;
-
-      setProgress(state.scanProgress);
-
-      if (statusElement) {
-        const index = Math.min(
-          statusMessages.length - 1,
-          Math.floor(state.scanProgress / 26)
-        );
-
-        statusElement.textContent = statusMessages[index];
-      }
-
-      if (state.scanProgress >= 100) {
-        stopScanWorkflow(true);
-        return;
-      }
-
-      state.scanTimer = window.setTimeout(step, 90);
-    };
-
-    step();
-  }
-
-  function stopScanWorkflow(completed = false) {
-    state.scanRunning = false;
-
-    if (state.scanTimer) {
-      clearTimeout(state.scanTimer);
-      state.scanTimer = null;
-    }
-
-    getCameraStage()?.classList.remove("scanning");
-
-    const startButton =
-      $("#startScan") ||
-      $('[data-action="start-scan"]');
-
-    if (startButton) {
-      startButton.disabled = false;
-    }
-
-    if (completed) {
-      setProgress(100);
-
-      setText(
-        ["#scanStatusText", "[data-scan-status]"],
-        "Capture workflow xumurameera."
-      );
-
-      showToast(
-        "Capture workflow xumurameera. Kun 3D medical scan mirkanaa'e jechuu miti.",
-        "success"
-      );
-    }
-  }
-
-  /* ==========================================================
-     CAMERA EVENT BINDING
-     ========================================================== */
-
-  function initCamera() {
-    [
-      "#startCamera",
-      "#cameraStart",
-      '[data-action="start-camera"]'
-    ].forEach(selector => {
-      $$(selector).forEach(button => {
-        button.addEventListener("click", startCamera);
-      });
-    });
-
-    [
-      "#stopCamera",
-      "#cameraStop",
-      '[data-action="stop-camera"]'
-    ].forEach(selector => {
-      $$(selector).forEach(button => {
-        button.disabled = true;
-        button.addEventListener("click", stopCamera);
-      });
-    });
-
-    [
-      "#switchCamera",
-      '[data-action="switch-camera"]'
-    ].forEach(selector => {
-      $$(selector).forEach(button => {
-        button.addEventListener("click", switchCamera);
-      });
-    });
-
-    [
-      "#capturePhoto",
-      "#takePhoto",
-      '[data-action="capture-photo"]'
-    ].forEach(selector => {
-      $$(selector).forEach(button => {
-        button.addEventListener("click", () => {
-          capturePhoto(state.currentAngle);
-        });
-      });
-    });
-
-    [
-      "#startScan",
-      '[data-action="start-scan"]'
-    ].forEach(selector => {
-      $$(selector).forEach(button => {
-        button.addEventListener("click", startScanWorkflow);
-      });
-    });
-
-    [
-      "#stopScan",
-      '[data-action="stop-scan"]'
-    ].forEach(selector => {
-      $$(selector).forEach(button => {
-        button.addEventListener("click", () => {
-          stopScanWorkflow(false);
-          showToast("Scan workflow dhaabbate.", "info");
-        });
-      });
-    });
-
-    [
-      "#downloadCaptures",
-      '[data-action="download-captures"]'
-    ].forEach(selector => {
-      $$(selector).forEach(button => {
-        button.addEventListener("click", downloadAllCaptures);
-      });
-    });
-
-    $$("[data-angle]").forEach(button => {
-      button.addEventListener("click", () => {
-        const angle = button.dataset.angle;
-
-        if (!["front", "left", "right", "back"].includes(angle)) {
-          return;
-        }
-
-        state.currentAngle = angle;
-
-        $$("[data-angle]").forEach(item => {
-          item.classList.toggle("active", item === button);
-        });
-
-        setText(
-          ["#currentCaptureAngle", "[data-current-angle]"],
-          angleLabel(angle)
-        );
-
-        showToast(
-          `${angleLabel(angle)} filatame. Amma camera irraa suuraa qabi.`,
-          "info"
-        );
-      });
-    });
-
-    $$("[data-delete-capture]").forEach(button => {
-      button.addEventListener("click", () => {
-        deleteCapture(button.dataset.deleteCapture);
-      });
-    });
-
-    $$("[data-download-capture]").forEach(button => {
-      button.addEventListener("click", () => {
-        downloadCapture(button.dataset.downloadCapture);
-      });
-    });
-
-    [
-      "#captureFront",
-      "#captureLeft",
-      "#captureRight",
-      "#captureBack"
-    ].forEach((selector, index) => {
-      const angles = ["front", "left", "right", "back"];
-
-      $$(selector).forEach(button => {
-        button.addEventListener("click", () => {
-          state.currentAngle = angles[index];
-          capturePhoto(angles[index]);
-        });
-      });
-    });
-
-    const resolution = $("#cameraResolution");
-
-    if (resolution) {
-      resolution.value = state.settings.cameraResolution;
-
-      resolution.addEventListener("change", () => {
-        state.settings.cameraResolution = resolution.value;
-
-        saveJSON(STORAGE.settings, state.settings);
-
-        if (state.cameraActive) {
-          stopCamera();
-          window.setTimeout(startCamera, 200);
-        }
-      });
-    }
-
-    window.addEventListener("pagehide", () => {
-      if (state.cameraStream) {
-        state.cameraStream.getTracks().forEach(track => track.stop());
-      }
-    });
-  }
-
-  /* ==========================================================
-     THREE.JS VIEWER
-     ========================================================== */
-
-  async function loadThreeJS() {
-    if (state.threeReady) return true;
-    if (state.threeFailed) return false;
-
-    const canvas =
-      $("#viewerCanvas") ||
-      $("#bodyCanvas") ||
-      $(".viewer-stage canvas");
-
-    if (!canvas) {
-      state.threeFailed = true;
-      console.info("No 3D viewer canvas found.");
-      return false;
+    if (cameraCanvas.width !== video.videoWidth ||
+        cameraCanvas.height !== video.videoHeight) {
+      cameraCanvas.width = video.videoWidth || 640;
+      cameraCanvas.height = video.videoHeight || 480;
     }
 
     try {
-      const THREE = await import(
-        "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+      cameraContext.drawImage(
+        video,
+        0,
+        0,
+        cameraCanvas.width,
+        cameraCanvas.height
       );
-
-      const { OrbitControls } = await import(
-        "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js"
-      );
-
-      state.three = {
-        THREE,
-        OrbitControls,
-        canvas,
-        scene: null,
-        camera: null,
-        renderer: null,
-        controls: null,
-        grid: null,
-        modelGroup: null,
-        anatomyGroup: null,
-        lights: []
-      };
-
-      createThreeScene();
-
-      state.threeReady = true;
-
-      return true;
     } catch (error) {
-      console.warn("Three.js could not be loaded:", error);
+      console.warn("Camera preview frame error:", error);
+    }
 
-      state.threeFailed = true;
+    cameraAnimationFrame = requestAnimationFrame(drawCameraPreview);
+  }
 
-      showViewerFallback();
+  async function switchCamera() {
+    cameraFacing =
+      cameraFacing === "environment" ? "user" : "environment";
 
-      return false;
+    settings.cameraFacing = cameraFacing;
+    saveSettings();
+
+    if (cameraActive) {
+      await startCamera();
+    } else {
+      notify(
+        `Next camera: ${cameraFacing === "user" ? "front" : "rear"}.`
+      );
     }
   }
 
-  function showViewerFallback() {
-    const stage = $(".viewer-stage");
+  function getCurrentCameraFrame() {
+    if (video && cameraActive &&
+        video.videoWidth > 0 && video.videoHeight > 0) {
+      const canvas = document.createElement("canvas");
 
-    if (!stage) return;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
 
-    let fallback = $("#viewerFallback");
+      const context = canvas.getContext("2d");
 
-    if (!fallback) {
-      fallback = document.createElement("div");
-      fallback.id = "viewerFallback";
-      fallback.className = "notice warning";
-      fallback.textContent =
-        "3D viewer fe'uu hin dandeenye. Internet connection ilaali; camera fi wellness tools itti fufu.";
-      stage.appendChild(fallback);
+      if (!context) throw new Error("Unable to create image context.");
+
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      return canvas.toDataURL("image/jpeg", 0.92);
     }
+
+    if (lastCapturedDataUrl) return lastCapturedDataUrl;
+
+    throw new Error("Start the camera before capturing a photo.");
   }
 
-  function createThreeScene() {
-    const viewer = state.three;
-    const THREE = viewer.THREE;
-    const canvas = viewer.canvas;
-
-    const scene = new THREE.Scene();
-
-    scene.background = new THREE.Color(0x07101d);
-    scene.fog = new THREE.Fog(0x07101d, 8, 22);
-
-    const camera = new THREE.PerspectiveCamera(
-      40,
-      1,
-      0.1,
-      100
-    );
-
-    camera.position.set(0, 1.5, 6.5);
-
-    const renderer = new THREE.WebGLRenderer({
-      canvas,
-      antialias: true,
-      alpha: false,
-      powerPreference: "low-power"
-    });
-
-    renderer.setPixelRatio(
-      Math.min(window.devicePixelRatio || 1, 1.75)
-    );
-
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-
-    renderer.shadowMap.enabled = false;
-
-    const controls = new viewer.OrbitControls(camera, renderer.domElement);
-
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.07;
-    controls.minDistance = 2.5;
-    controls.maxDistance = 11;
-    controls.target.set(0, 1.1, 0);
-    controls.autoRotate = Boolean(state.settings.autoRotate);
-    controls.autoRotateSpeed = Number(state.settings.rotationSpeed) || 1;
-
-    const ambient = new THREE.HemisphereLight(
-      0xbbeaff,
-      0x101428,
-      2.0
-    );
-
-    scene.add(ambient);
-
-    const keyLight = new THREE.DirectionalLight(0x83eaff, 2.1);
-    keyLight.position.set(3, 5, 4);
-    scene.add(keyLight);
-
-    const rimLight = new THREE.PointLight(0x7769ff, 2.0, 15);
-    rimLight.position.set(-3, 2.5, -2);
-    scene.add(rimLight);
-
-    const grid = new THREE.GridHelper(
-      10,
-      20,
-      0x1b5c7a,
-      0x163149
-    );
-
-    grid.position.y = -0.02;
-    grid.material.transparent = true;
-    grid.material.opacity = 0.45;
-
-    scene.add(grid);
-
-    viewer.scene = scene;
-    viewer.camera = camera;
-    viewer.renderer = renderer;
-    viewer.controls = controls;
-    viewer.grid = grid;
-    viewer.lights = [ambient, keyLight, rimLight];
-
-    createIllustrativeAvatar();
-
-    resizeThreeViewer();
-
-    window.addEventListener("resize", resizeThreeViewer);
-
-    const animate = () => {
-      state.animationFrame = requestAnimationFrame(animate);
-
-      if (!state.threeReady || !state.three) return;
-
-      if (state.avatar && state.settings.autoRotate) {
-        state.avatar.rotation.y +=
-          0.0015 * Number(state.settings.rotationSpeed || 1);
+  function capturePhoto(view = "front") {
+    try {
+      if (!cameraActive) {
+        notify("Start the camera before capturing a photo.", "warning");
+        return null;
       }
 
-      state.three.controls.update();
-      state.three.renderer.render(
-        state.three.scene,
-        state.three.camera
-      );
-    };
+      const imageData = getCurrentCameraFrame();
+      const capture = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        view,
+        createdAt: timestamp(),
+        dataUrl: imageData
+      };
 
-    animate();
+      lastCapturedDataUrl = imageData;
 
-    initViewerControls();
+      if (settings.autosave) {
+        captures.unshift(capture);
+        captures = captures.slice(0, 30);
+        writeStorage(STORAGE_KEYS.captures, captures);
+      }
+
+      updateDashboard();
+      renderCaptureGallery();
+
+      const imagePreview =
+        byId("capturedImage") ||
+        byId("capturePreview") ||
+        $("img[data-capture-preview]");
+
+      if (imagePreview) {
+        imagePreview.src = imageData;
+        imagePreview.hidden = false;
+      }
+
+      const captureStatus = byId("captureStatus");
+      if (captureStatus) {
+        captureStatus.textContent = `${view} photo captured at ${formatTime()}`;
+      }
+
+      playScanSound();
+      notify(`${view} photo captured.`, "success");
+
+      return capture;
+    } catch (error) {
+      notify(error.message || "Unable to capture photo.", "error");
+      return null;
+    }
   }
 
-  function makeMaterial(color, options = {}) {
-    const THREE = state.three.THREE;
+  function deleteCapture(id) {
+    captures = captures.filter((capture) => capture.id !== id);
+    writeStorage(STORAGE_KEYS.captures, captures);
+    updateDashboard();
+    notify("Photo deleted.");
+  }
 
-    return new THREE.MeshStandardMaterial({
-      color,
-      roughness: 0.56,
-      metalness: 0.12,
-      ...options
+  function downloadDataUrl(dataUrl, filename) {
+    const link = document.createElement("a");
+    link.href = dataUrl;
+    link.download = filename;
+    link.rel = "noopener";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
+
+  function downloadCapture(id) {
+    const capture = captures.find((item) => item.id === id);
+
+    if (!capture) {
+      notify("Photo not found.", "error");
+      return;
+    }
+
+    downloadDataUrl(
+      capture.dataUrl,
+      `naol-health-${capture.view}-${capture.id}.jpg`
+    );
+  }
+
+  function renderCaptureGallery() {
+    const gallery =
+      byId("captureGallery") ||
+      byId("photoGallery") ||
+      $("[data-capture-gallery]");
+
+    if (!gallery) return;
+
+    gallery.replaceChildren();
+
+    if (captures.length === 0) {
+      const empty = document.createElement("p");
+      empty.textContent = "No saved photos yet.";
+      gallery.appendChild(empty);
+      return;
+    }
+
+    captures.forEach((capture) => {
+      const card = document.createElement("article");
+      card.className = "capture-card";
+
+      const image = document.createElement("img");
+      image.src = capture.dataUrl;
+      image.alt = `${capture.view} camera capture`;
+      image.loading = "lazy";
+
+      Object.assign(image.style, {
+        width: "100%",
+        maxWidth: "260px",
+        height: "auto",
+        borderRadius: "12px",
+        objectFit: "cover"
+      });
+
+      const title = document.createElement("p");
+      title.textContent =
+        `${capture.view.toUpperCase()} • ${formatDate(new Date(capture.createdAt))}`;
+
+      const downloadButton = document.createElement("button");
+      downloadButton.type = "button";
+      downloadButton.textContent = "Download photo";
+      downloadButton.addEventListener("click", () => downloadCapture(capture.id));
+
+      const deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.textContent = "Delete photo";
+      deleteButton.addEventListener("click", () => deleteCapture(capture.id));
+
+      card.append(image, title, downloadButton, deleteButton);
+      gallery.appendChild(card);
     });
   }
 
-  function createEllipsoid(
-    parent,
-    name,
-    color,
-    position,
-    scale,
-    options = {}
-  ) {
-    const THREE = state.three.THREE;
+  function downloadAllCaptures() {
+    if (captures.length === 0) {
+      notify("There are no saved photos to download.", "warning");
+      return;
+    }
 
-    const geometry = new THREE.SphereGeometry(1, 24, 18);
-    const material = makeMaterial(color, options);
+    captures.forEach((capture, index) => {
+      window.setTimeout(() => {
+        downloadDataUrl(
+          capture.dataUrl,
+          `naol-health-${capture.view}-${index + 1}.jpg`
+        );
+      }, index * 250);
+    });
+  }
 
+  /* -------------------- SCAN SESSION -------------------- */
+
+  const scanViews = ["front", "left", "right", "back"];
+
+  let currentScanIndex = 0;
+  let scanSessionActive = false;
+  let scanSession = [];
+
+  function updateScanProgress() {
+    const progress = byId("scanProgress");
+    const label = byId("scanProgressLabel");
+
+    const completed = scanSession.length;
+    const percentage = (completed / scanViews.length) * 100;
+
+    if (progress) {
+      progress.style.width = `${percentage}%`;
+      progress.setAttribute("aria-valuenow", String(percentage));
+    }
+
+    if (label) {
+      label.textContent = `${completed}/${scanViews.length} views captured`;
+    }
+
+    const current = byId("currentScanView");
+
+    if (current) {
+      current.textContent =
+        completed >= scanViews.length
+          ? "Capture session complete"
+          : `Next view: ${scanViews[currentScanIndex]}`;
+    }
+  }
+
+  function startScanSession() {
+    scanSession = [];
+    currentScanIndex = 0;
+    scanSessionActive = true;
+    updateScanProgress();
+    notify("Capture session started. Capture the four requested views.");
+  }
+
+  function captureNextView() {
+    if (!scanSessionActive) startScanSession();
+
+    if (currentScanIndex >= scanViews.length) {
+      notify("All four views have already been captured.", "warning");
+      return;
+    }
+
+    const view = scanViews[currentScanIndex];
+    const capture = capturePhoto(view);
+
+    if (!capture) return;
+
+    scanSession.push(capture.id);
+    currentScanIndex += 1;
+
+    updateScanProgress();
+
+    if (currentScanIndex >= scanViews.length) {
+      scanSessionActive = false;
+
+      const note = byId("scanSessionNote");
+
+      if (note) {
+        note.textContent =
+          "Four reference photos saved. These photos do not automatically create a true 3D body scan.";
+      }
+
+      notify(
+        "Four views captured. This is a photo collection, not a medical 3D scan.",
+        "success"
+      );
+    }
+  }
+
+  /* -------------------- SCAN SOUND -------------------- */
+
+  function playScanSound() {
+    if (!settings.scanSound) return;
+
+    try {
+      const AudioContextClass =
+        window.AudioContext || window.webkitAudioContext;
+
+      if (!AudioContextClass) return;
+
+      const context = new AudioContextClass();
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(720, context.currentTime);
+
+      gain.gain.setValueAtTime(0.05, context.currentTime);
+      gain.gain.exponentialRampToValueAtTime(
+        0.001,
+        context.currentTime + 0.12
+      );
+
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+
+      oscillator.start();
+      oscillator.stop(context.currentTime + 0.12);
+
+      oscillator.onended = () => context.close();
+    } catch (error) {
+      console.warn("Audio unavailable:", error);
+    }
+  }
+
+  /* -------------------- THREE.JS 3D VIEWER -------------------- */
+
+  let THREE = null;
+  let OrbitControlsClass = null;
+
+  let threeScene = null;
+  let threeCamera = null;
+  let threeRenderer = null;
+  let orbitControls = null;
+  let bodyGroup = null;
+  let skeletonGroup = null;
+  let gridHelper = null;
+  let animationFrame3D = null;
+  let threeReady = false;
+
+  const threeContainer =
+    byId("body3DViewer") ||
+    byId("threeContainer") ||
+    byId("bodyViewer") ||
+    $("[data-3d-viewer]");
+
+  function makeMaterial(color, roughness = 0.45, metalness = 0.15) {
+    return new THREE.MeshStandardMaterial({
+      color,
+      roughness,
+      metalness
+    });
+  }
+
+  function addEllipsoid(parent, position, scale, material, segments = 32) {
+    const geometry = new THREE.SphereGeometry(1, segments, segments);
     const mesh = new THREE.Mesh(geometry, material);
 
-    mesh.name = name;
     mesh.position.set(position[0], position[1], position[2]);
     mesh.scale.set(scale[0], scale[1], scale[2]);
+
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
 
     parent.add(mesh);
 
     return mesh;
   }
 
-  function createLimb(
-    parent,
-    name,
-    color,
-    start,
-    end,
-    radiusTop,
-    radiusBottom
-  ) {
-    const THREE = state.three.THREE;
-
+  function addCapsuleLikeLimb(parent, start, end, radius, material) {
     const a = new THREE.Vector3(...start);
     const b = new THREE.Vector3(...end);
 
@@ -1542,1814 +914,1773 @@ function initNaolHealthScanner() {
     const length = direction.length();
 
     const geometry = new THREE.CylinderGeometry(
-      radiusTop,
-      radiusBottom,
+      radius * 0.85,
+      radius,
       length,
-      14
+      16,
+      1
     );
 
-    const mesh = new THREE.Mesh(
-      geometry,
-      makeMaterial(color)
-    );
+    const mesh = new THREE.Mesh(geometry, material);
 
-    mesh.name = name;
     mesh.position.copy(a).add(b).multiplyScalar(0.5);
     mesh.quaternion.setFromUnitVectors(
       new THREE.Vector3(0, 1, 0),
       direction.normalize()
     );
 
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+
     parent.add(mesh);
+
+    addEllipsoid(
+      parent,
+      [a.x, a.y, a.z],
+      [radius, radius, radius],
+      material,
+      16
+    );
+
+    addEllipsoid(
+      parent,
+      [b.x, b.y, b.z],
+      [radius, radius, radius],
+      material,
+      16
+    );
 
     return mesh;
   }
 
-  function createIllustrativeAvatar() {
-    const THREE = state.three.THREE;
+  function createIllustrativeBody() {
+    if (!THREE || !bodyGroup) return;
 
-    const group = new THREE.Group();
-    group.name = "NaolIllustrativeAvatar";
+    while (bodyGroup.children.length > 0) {
+      const child = bodyGroup.children[0];
+      bodyGroup.remove(child);
 
-    const skin = 0x8bd9e8;
-    const suit = 0x1d4567;
-    const accent = 0x48e0ff;
-    const dark = 0x12263a;
+      child.traverse?.((object) => {
+        object.geometry?.dispose?.();
 
-    // Head
-    createEllipsoid(
-      group,
-      "Illustrative head",
-      skin,
-      [0, 2.66, 0],
-      [0.24, 0.31, 0.22]
-    );
-
-    // Neck
-    createLimb(
-      group,
-      "Neck",
-      skin,
-      [0, 2.30, 0],
-      [0, 2.43, 0],
-      0.09,
-      0.10
-    );
-
-    // Torso
-    createEllipsoid(
-      group,
-      "Upper torso",
-      suit,
-      [0, 1.90, 0],
-      [0.43, 0.48, 0.24]
-    );
-
-    createEllipsoid(
-      group,
-      "Lower torso",
-      dark,
-      [0, 1.38, 0],
-      [0.32, 0.27, 0.20]
-    );
-
-    // Shoulder joints
-    createEllipsoid(
-      group,
-      "Left shoulder",
-      accent,
-      [-0.43, 2.14, 0],
-      [0.13, 0.14, 0.13]
-    );
-
-    createEllipsoid(
-      group,
-      "Right shoulder",
-      accent,
-      [0.43, 2.14, 0],
-      [0.13, 0.14, 0.13]
-    );
-
-    // Arms
-    createLimb(
-      group,
-      "Left upper arm",
-      skin,
-      [-0.44, 2.1, 0],
-      [-0.59, 1.63, 0.01],
-      0.105,
-      0.075
-    );
-
-    createLimb(
-      group,
-      "Left forearm",
-      skin,
-      [-0.59, 1.63, 0.01],
-      [-0.62, 1.15, 0.06],
-      0.075,
-      0.055
-    );
-
-    createLimb(
-      group,
-      "Right upper arm",
-      skin,
-      [0.44, 2.1, 0],
-      [0.59, 1.63, 0.01],
-      0.105,
-      0.075
-    );
-
-    createLimb(
-      group,
-      "Right forearm",
-      skin,
-      [0.59, 1.63, 0.01],
-      [0.62, 1.15, 0.06],
-      0.075,
-      0.055
-    );
-
-    // Hands
-    createEllipsoid(
-      group,
-      "Left hand",
-      skin,
-      [-0.62, 1.07, 0.06],
-      [0.07, 0.11, 0.065]
-    );
-
-    createEllipsoid(
-      group,
-      "Right hand",
-      skin,
-      [0.62, 1.07, 0.06],
-      [0.07, 0.11, 0.065]
-    );
-
-    // Legs
-    createLimb(
-      group,
-      "Left thigh",
-      suit,
-      [-0.16, 1.24, 0],
-      [-0.18, 0.70, 0],
-      0.16,
-      0.12
-    );
-
-    createLimb(
-      group,
-      "Left shin",
-      suit,
-      [-0.18, 0.70, 0],
-      [-0.18, 0.15, 0.02],
-      0.105,
-      0.075
-    );
-
-    createLimb(
-      group,
-      "Right thigh",
-      suit,
-      [0.16, 1.24, 0],
-      [0.18, 0.70, 0],
-      0.16,
-      0.12
-    );
-
-    createLimb(
-      group,
-      "Right shin",
-      suit,
-      [0.18, 0.70, 0],
-      [0.18, 0.15, 0.02],
-      0.105,
-      0.075
-    );
-
-    // Feet
-    createEllipsoid(
-      group,
-      "Left foot",
-      dark,
-      [-0.18, 0.08, 0.09],
-      [0.13, 0.07, 0.22]
-    );
-
-    createEllipsoid(
-      group,
-      "Right foot",
-      dark,
-      [0.18, 0.08, 0.09],
-      [0.13, 0.07, 0.22]
-    );
-
-    // Chest marker
-    createEllipsoid(
-      group,
-      "Chest marker",
-      accent,
-      [0, 1.96, 0.236],
-      [0.045, 0.045, 0.025],
-      {
-        emissive: 0x1688a8,
-        emissiveIntensity: 0.7
-      }
-    );
-
-    // Ground ring
-    const ringGeometry = new THREE.TorusGeometry(0.75, 0.012, 8, 64);
-
-    const ring = new THREE.Mesh(
-      ringGeometry,
-      new THREE.MeshBasicMaterial({
-        color: 0x38d8ff,
-        transparent: true,
-        opacity: 0.5
-      })
-    );
-
-    ring.rotation.x = Math.PI / 2;
-    ring.position.y = 0.015;
-
-    group.add(ring);
-
-    state.three.scene.add(group);
-
-    state.three.modelGroup = group;
-    state.avatar = group;
-
-    // Make educational anatomy parts available.
-    createEducationalAnatomy();
-  }
-
-  function createEducationalAnatomy() {
-    const THREE = state.three.THREE;
-    const group = new THREE.Group();
-
-    group.name = "EducationalAnatomyIllustration";
-    group.visible = false;
-
-    const transparentMaterial = color =>
-      new THREE.MeshStandardMaterial({
-        color,
-        roughness: 0.5,
-        metalness: 0.08,
-        transparent: true,
-        opacity: 0.9
+        if (Array.isArray(object.material)) {
+          object.material.forEach((material) => material.dispose?.());
+        } else {
+          object.material?.dispose?.();
+        }
       });
+    }
 
-    // Generic educational illustrations only.
-    // These are not the user's organs or a medical scan.
+    const skin = makeMaterial(0x35b6c9, 0.48, 0.18);
+    const darkerSkin = makeMaterial(0x167f99, 0.5, 0.12);
+    const jointMaterial = makeMaterial(0x5bd7e6, 0.38, 0.22);
+    const clothing = makeMaterial(0x223d63, 0.55, 0.15);
 
-    createEllipsoid(
-      group,
-      "Educational heart illustration",
-      0xff536c,
-      [-0.12, 1.9, 0.22],
-      [0.12, 0.16, 0.10],
-      {
-        emissive: 0x5a0716,
-        emissiveIntensity: 0.3
-      }
+    // Head and neck.
+    addEllipsoid(bodyGroup, [0, 3.0, 0], [0.34, 0.43, 0.31], skin);
+    addEllipsoid(bodyGroup, [0, 2.49, 0], [0.14, 0.25, 0.14], darkerSkin);
+
+    // Torso.
+    addEllipsoid(bodyGroup, [0, 1.91, 0], [0.64, 0.72, 0.31], clothing);
+    addEllipsoid(bodyGroup, [0, 1.35, 0], [0.42, 0.37, 0.28], skin);
+
+    // Shoulders.
+    addEllipsoid(bodyGroup, [-0.62, 2.25, 0], [0.27, 0.26, 0.27], skin);
+    addEllipsoid(bodyGroup, [0.62, 2.25, 0], [0.27, 0.26, 0.27], skin);
+
+    // Arms.
+    addCapsuleLikeLimb(
+      bodyGroup,
+      [-0.68, 2.19, 0],
+      [-0.83, 1.55, 0],
+      0.14,
+      skin
     );
 
-    createEllipsoid(
-      group,
-      "Educational left lung",
-      0x6a9dff,
-      [-0.17, 1.92, 0.10],
-      [0.13, 0.25, 0.08],
-      transparentMaterial(0x6a9dff)
+    addCapsuleLikeLimb(
+      bodyGroup,
+      [-0.83, 1.55, 0],
+      [-0.86, 0.95, 0],
+      0.11,
+      darkerSkin
     );
 
-    createEllipsoid(
-      group,
-      "Educational right lung",
-      0x6a9dff,
-      [0.17, 1.92, 0.10],
-      [0.13, 0.25, 0.08],
-      transparentMaterial(0x6a9dff)
+    addEllipsoid(bodyGroup, [-0.86, 0.82, 0], [0.13, 0.18, 0.12], skin);
+
+    addCapsuleLikeLimb(
+      bodyGroup,
+      [0.68, 2.19, 0],
+      [0.83, 1.55, 0],
+      0.14,
+      skin
     );
 
-    createEllipsoid(
-      group,
-      "Educational brain illustration",
-      0xc9a1ff,
-      [0, 2.68, 0.03],
-      [0.19, 0.19, 0.18],
-      {
-        emissive: 0x35115f,
-        emissiveIntensity: 0.3
-      }
+    addCapsuleLikeLimb(
+      bodyGroup,
+      [0.83, 1.55, 0],
+      [0.86, 0.95, 0],
+      0.11,
+      darkerSkin
     );
 
-    state.three.scene.add(group);
-    state.three.anatomyGroup = group;
+    addEllipsoid(bodyGroup, [0.86, 0.82, 0], [0.13, 0.18, 0.12], skin);
+
+    // Legs.
+    addCapsuleLikeLimb(
+      bodyGroup,
+      [-0.25, 1.11, 0],
+      [-0.28, 0.28, 0],
+      0.19,
+      skin
+    );
+
+    addCapsuleLikeLimb(
+      bodyGroup,
+      [-0.28, 0.28, 0],
+      [-0.28, -0.48, 0],
+      0.13,
+      darkerSkin
+    );
+
+    addEllipsoid(bodyGroup, [-0.28, -0.57, 0.08], [0.17, 0.11, 0.29], clothing);
+
+    addCapsuleLikeLimb(
+      bodyGroup,
+      [0.25, 1.11, 0],
+      [0.28, 0.28, 0],
+      0.19,
+      skin
+    );
+
+    addCapsuleLikeLimb(
+      bodyGroup,
+      [0.28, 0.28, 0],
+      [0.28, -0.48, 0],
+      0.13,
+      darkerSkin
+    );
+
+    addEllipsoid(bodyGroup, [0.28, -0.57, 0.08], [0.17, 0.11, 0.29], clothing);
+
+    // Neck, chest, and abdomen reference lines.
+    const lineMaterial = new THREE.MeshBasicMaterial({
+      color: 0x4be9ff,
+      transparent: true,
+      opacity: 0.45
+    });
+
+    const chestLineGeometry = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(-0.43, 2.0, 0.31),
+      new THREE.Vector3(0.43, 2.0, 0.31)
+    ]);
+
+    const chestLine = new THREE.Line(chestLineGeometry, lineMaterial);
+    bodyGroup.add(chestLine);
+
+    const abdomenLineGeometry = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(-0.3, 1.47, 0.28),
+      new THREE.Vector3(0.3, 1.47, 0.28)
+    ]);
+
+    bodyGroup.add(new THREE.Line(abdomenLineGeometry, lineMaterial));
+
+    bodyGroup.position.y = 0.25;
   }
 
-  function resizeThreeViewer() {
-    if (!state.three) return;
+  function createIllustrativeSkeleton() {
+    if (!THREE || !skeletonGroup) return;
 
-    const viewer = state.three;
-    const canvas = viewer.canvas;
-    const parent = canvas.parentElement;
+    while (skeletonGroup.children.length > 0) {
+      const child = skeletonGroup.children[0];
+      skeletonGroup.remove(child);
 
-    if (!parent) return;
+      child.traverse?.((object) => {
+        object.geometry?.dispose?.();
+        object.material?.dispose?.();
+      });
+    }
 
-    const width = Math.max(1, parent.clientWidth);
-    const height = Math.max(1, parent.clientHeight || 430);
+    const boneMaterial = new THREE.MeshStandardMaterial({
+      color: 0xe0e7ef,
+      roughness: 0.6,
+      transparent: true,
+      opacity: 0.8
+    });
 
-    viewer.camera.aspect = width / height;
-    viewer.camera.updateProjectionMatrix();
+    addEllipsoid(
+      skeletonGroup,
+      [0, 3.0, 0.03],
+      [0.23, 0.3, 0.2],
+      boneMaterial,
+      24
+    );
 
-    viewer.renderer.setSize(width, height, false);
+    addCapsuleLikeLimb(
+      skeletonGroup,
+      [0, 2.65, 0],
+      [0, 1.1, 0],
+      0.07,
+      boneMaterial
+    );
+
+    addCapsuleLikeLimb(
+      skeletonGroup,
+      [-0.42, 2.24, 0],
+      [0.42, 2.24, 0],
+      0.045,
+      boneMaterial
+    );
+
+    addCapsuleLikeLimb(
+      skeletonGroup,
+      [-0.48, 2.2, 0],
+      [-0.85, 1.55, 0],
+      0.045,
+      boneMaterial
+    );
+
+    addCapsuleLikeLimb(
+      skeletonGroup,
+      [-0.85, 1.55, 0],
+      [-0.86, 0.95, 0],
+      0.035,
+      boneMaterial
+    );
+
+    addCapsuleLikeLimb(
+      skeletonGroup,
+      [0.48, 2.2, 0],
+      [0.85, 1.55, 0],
+      0.045,
+      boneMaterial
+    );
+
+    addCapsuleLikeLimb(
+      skeletonGroup,
+      [0.85, 1.55, 0],
+      [0.86, 0.95, 0],
+      0.035,
+      boneMaterial
+    );
+
+    addCapsuleLikeLimb(
+      skeletonGroup,
+      [-0.22, 1.05, 0],
+      [-0.28, 0.25, 0],
+      0.06,
+      boneMaterial
+    );
+
+    addCapsuleLikeLimb(
+      skeletonGroup,
+      [-0.28, 0.25, 0],
+      [-0.28, -0.48, 0],
+      0.045,
+      boneMaterial
+    );
+
+    addCapsuleLikeLimb(
+      skeletonGroup,
+      [0.22, 1.05, 0],
+      [0.28, 0.25, 0],
+      0.06,
+      boneMaterial
+    );
+
+    addCapsuleLikeLimb(
+      skeletonGroup,
+      [0.28, 0.25, 0],
+      [0.28, -0.48, 0],
+      0.045,
+      boneMaterial
+    );
+
+    skeletonGroup.position.y = 0.25;
+    skeletonGroup.visible = Boolean(settings.showSkeleton);
   }
 
-  function setViewerPreset(preset) {
-    if (!state.threeReady || !state.three) {
-      showToast("3D viewer qophaa'aa miti.", "warning");
+  async function init3DViewer() {
+    if (!threeContainer) {
+      console.info(
+        "3D viewer container not found. Add an element with id='body3DViewer' to enable the viewer."
+      );
       return;
     }
 
-    const { THREE, camera, controls } = state.three;
+    try {
+      THREE = await import(
+        "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+      );
 
-    const presets = {
-      front: [0, 1.5, 6.5],
-      back: [0, 1.5, -6.5],
-      left: [-6.5, 1.5, 0],
-      right: [6.5, 1.5, 0],
-      top: [0, 7, 0.01]
+      const controlsModule = await import(
+        "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js"
+      );
+
+      OrbitControlsClass = controlsModule.OrbitControls;
+
+      threeScene = new THREE.Scene();
+      threeScene.background = new THREE.Color(0x07111f);
+
+      threeCamera = new THREE.PerspectiveCamera(
+        42,
+        Math.max(1, threeContainer.clientWidth) /
+          Math.max(1, threeContainer.clientHeight),
+        0.1,
+        100
+      );
+
+      threeCamera.position.set(4.2, 2.8, 6.5);
+
+      threeRenderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: false,
+        powerPreference: "low-power"
+      });
+
+      threeRenderer.setPixelRatio(
+        Math.min(window.devicePixelRatio || 1, 1.75)
+      );
+
+      threeRenderer.setSize(
+        Math.max(1, threeContainer.clientWidth),
+        Math.max(1, threeContainer.clientHeight)
+      );
+
+      threeRenderer.shadowMap.enabled = true;
+      threeRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      threeRenderer.outputColorSpace = THREE.SRGBColorSpace;
+
+      threeContainer.replaceChildren(threeRenderer.domElement);
+
+      threeRenderer.domElement.style.display = "block";
+      threeRenderer.domElement.style.width = "100%";
+      threeRenderer.domElement.style.height = "100%";
+      threeRenderer.domElement.style.minHeight = "320px";
+
+      const ambientLight = new THREE.AmbientLight(0x8abbd7, 1.8);
+      threeScene.add(ambientLight);
+
+      const keyLight = new THREE.DirectionalLight(0xffffff, 3.0);
+      keyLight.position.set(4, 7, 5);
+      keyLight.castShadow = true;
+      threeScene.add(keyLight);
+
+      const rimLight = new THREE.PointLight(0x18c9f4, 35, 20);
+      rimLight.position.set(-4, 3, -3);
+      threeScene.add(rimLight);
+
+      gridHelper = new THREE.GridHelper(12, 24, 0x147b9a, 0x123149);
+      gridHelper.position.y = -0.42;
+      gridHelper.visible = Boolean(settings.showGrid);
+      threeScene.add(gridHelper);
+
+      bodyGroup = new THREE.Group();
+      threeScene.add(bodyGroup);
+
+      skeletonGroup = new THREE.Group();
+      threeScene.add(skeletonGroup);
+
+      createIllustrativeBody();
+      createIllustrativeSkeleton();
+
+      orbitControls = new OrbitControlsClass(
+        threeCamera,
+        threeRenderer.domElement
+      );
+
+      orbitControls.enableDamping = true;
+      orbitControls.dampingFactor = 0.06;
+      orbitControls.minDistance = 3.5;
+      orbitControls.maxDistance = 14;
+      orbitControls.target.set(0, 1.35, 0);
+      orbitControls.autoRotate = Boolean(settings.autoRotate);
+      orbitControls.autoRotateSpeed = Number(settings.rotationSpeed) || 0.5;
+
+      threeReady = true;
+
+      update3DStatus("3D viewer ready");
+
+      animate3D();
+      window.addEventListener("resize", resize3DViewer);
+
+      notify("3D viewer loaded.", "success");
+    } catch (error) {
+      console.warn("Three.js viewer could not be loaded:", error);
+
+      update3DStatus(
+        "3D viewer unavailable. Check your internet connection and try again."
+      );
+    }
+  }
+
+  function update3DStatus(message) {
+    [
+      "viewerStatus",
+      "bodyViewerStatus",
+      "threeStatus",
+      "modelStatus"
+    ].forEach((id) => {
+      const element = byId(id);
+      if (element) element.textContent = message;
+    });
+  }
+
+  function animate3D() {
+    if (!threeReady || !threeRenderer || !threeScene || !threeCamera) return;
+
+    animationFrame3D = requestAnimationFrame(animate3D);
+
+    if (orbitControls) orbitControls.update();
+
+    threeRenderer.render(threeScene, threeCamera);
+  }
+
+  function resize3DViewer() {
+    if (!threeReady || !threeContainer || !threeRenderer || !threeCamera) return;
+
+    const width = Math.max(1, threeContainer.clientWidth);
+    const height = Math.max(1, threeContainer.clientHeight);
+
+    threeCamera.aspect = width / height;
+    threeCamera.updateProjectionMatrix();
+
+    threeRenderer.setSize(width, height);
+  }
+
+  function set3DView(view) {
+    if (!threeReady || !threeCamera || !orbitControls) {
+      notify("The 3D viewer is not ready yet.", "warning");
+      return;
+    }
+
+    const positions = {
+      front: [0, 2.0, 6.5],
+      back: [0, 2.0, -6.5],
+      left: [-6.5, 2.0, 0],
+      right: [6.5, 2.0, 0],
+      top: [0, 8.0, 0.01]
     };
 
-    const position = presets[preset];
+    const position = positions[String(view).toLowerCase()];
 
-    if (!position) return;
-
-    camera.position.set(...position);
-
-    controls.target.set(0, 1.3, 0);
-    controls.update();
-
-    $$("[data-view]").forEach(button => {
-      button.classList.toggle(
-        "active",
-        button.dataset.view === preset
-      );
-    });
-  }
-
-  function resetViewer() {
-    if (!state.threeReady || !state.three) return;
-
-    state.three.camera.position.set(0, 1.5, 6.5);
-    state.three.controls.target.set(0, 1.1, 0);
-    state.three.controls.update();
-
-    if (state.avatar) {
-      state.avatar.rotation.set(0, 0, 0);
-      state.avatar.scale.set(1, 1, 1);
-    }
-
-    showToast("3D viewer reset godhame.", "success");
-  }
-
-  function initViewerControls() {
-    $$("[data-view]").forEach(button => {
-      button.addEventListener("click", () => {
-        setViewerPreset(button.dataset.view);
-      });
-    });
-
-    [
-      "#resetViewer",
-      '[data-action="reset-viewer"]'
-    ].forEach(selector => {
-      $$(selector).forEach(button => {
-        button.addEventListener("click", resetViewer);
-      });
-    });
-
-    [
-      "#autoRotate",
-      '[data-action="toggle-rotation"]'
-    ].forEach(selector => {
-      $$(selector).forEach(button => {
-        button.addEventListener("click", () => {
-          if (!state.three) {
-            showToast("3D viewer qophaa'aa miti.", "warning");
-            return;
-          }
-
-          state.settings.autoRotate = !state.settings.autoRotate;
-
-          state.three.controls.autoRotate =
-            state.settings.autoRotate;
-
-          saveJSON(STORAGE.settings, state.settings);
-
-          button.classList.toggle(
-            "active",
-            state.settings.autoRotate
-          );
-
-          showToast(
-            state.settings.autoRotate
-              ? "Auto-rotate baname."
-              : "Auto-rotate cufame.",
-            "success"
-          );
-        });
-      });
-    });
-
-    const zoomRange = $("#viewerZoom");
-
-    zoomRange?.addEventListener("input", () => {
-      if (!state.three) return;
-
-      const zoom = Number(zoomRange.value) || 6.5;
-
-      const direction = state.three.camera.position.clone()
-        .sub(state.three.controls.target)
-        .normalize();
-
-      state.three.camera.position.copy(
-        state.three.controls.target.clone().addScaledVector(
-          direction,
-          zoom
-        )
-      );
-    });
-
-    const rotationRange = $("#rotationSpeed");
-
-    rotationRange?.addEventListener("input", () => {
-      state.settings.rotationSpeed = Number(rotationRange.value) || 1;
-
-      if (state.three) {
-        state.three.controls.autoRotateSpeed =
-          state.settings.rotationSpeed;
-      }
-
-      saveJSON(STORAGE.settings, state.settings);
-    });
-  }
-
-  /* ==========================================================
-     ANATOMY LAB
-     ========================================================== */
-
-  const anatomyInformation = {
-    body: {
-      title: "Human Body",
-      description:
-        "Qaama namaa waliigalaa akka barnootaatti agarsiisa. Kun scan dhuunfaa ykn madaallii fayyaa miti."
-    },
-    skeleton: {
-      title: "Skeleton",
-      description:
-        "Sirna lafee namaa irratti barnoota waliigalaa. Fakkii barnootaaf qophaa'e malee lafee nama tokkoo irraa hin scan'amne."
-    },
-    muscles: {
-      title: "Muscular System",
-      description:
-        "Maashaa fi sochii qaamaa ilaalchisee fakkii barnootaa waliigalaa."
-    },
-    heart: {
-      title: "Heart",
-      description:
-        "Bakka onnee fakkeenyaaf agarsiisa. Heart rate ykn dhibee onnee hin safaru."
-    },
-    lungs: {
-      title: "Lungs",
-      description:
-        "Somba ilaalchisee fakkii barnootaa waliigalaa. Oxygen ykn hojii sombaa hin safaru."
-    },
-    brain: {
-      title: "Brain",
-      description:
-        "Sammuu ilaalchisee fakkii barnootaa. Depression ykn dhibee sammuu hin adda baasu."
-    },
-    digestive: {
-      title: "Digestive System",
-      description:
-        "Sirna nyaata bullaa'uu barnootaaf ibsu."
-    },
-    nervous: {
-      title: "Nervous System",
-      description:
-        "Sirna narvii ilaalchisee ibsa barnootaa waliigalaa."
-    },
-    circulatory: {
-      title: "Circulatory System",
-      description:
-        "Sirna dhiigaa ilaalchisee barnoota waliigalaa."
-    }
-  };
-
-  function selectAnatomy(name) {
-    const info = anatomyInformation[name];
-
-    if (!info) {
-      showToast("Anatomy system kana hin arganne.", "warning");
+    if (!position) {
+      notify("Unknown 3D view.", "warning");
       return;
     }
 
-    state.currentAnatomy = name;
+    threeCamera.position.set(...position);
+    orbitControls.target.set(0, 1.35, 0);
 
-    $$("[data-anatomy]").forEach(button => {
-      button.classList.toggle(
-        "active",
-        button.dataset.anatomy === name
-      );
-    });
-
-    setText(
-      ["#anatomyTitle", "[data-anatomy-title]"],
-      info.title
-    );
-
-    const description =
-      $("#anatomyDescription") ||
-      $("[data-anatomy-description]");
-
-    if (description) {
-      description.textContent = info.description;
+    if (String(view).toLowerCase() === "back") {
+      threeCamera.lookAt(0, 1.35, 0);
     }
 
-    if (state.threeReady && state.three) {
-      if (state.avatar) {
-        state.avatar.visible = name === "body";
-      }
+    orbitControls.update();
 
-      if (state.three.anatomyGroup) {
-        state.three.anatomyGroup.visible = name !== "body";
-      }
-
-      // Give the anatomy illustration a different accent color.
-      if (state.three.anatomyGroup) {
-        const materialColors = {
-          skeleton: 0xd9e8f5,
-          muscles: 0xd95b6a,
-          heart: 0xff536c,
-          lungs: 0x6a9dff,
-          brain: 0xc9a1ff,
-          digestive: 0xf4b96c,
-          nervous: 0xffd66b,
-          circulatory: 0xf05a72
-        };
-
-        const selectedColor = materialColors[name];
-
-        state.three.anatomyGroup.children.forEach(mesh => {
-          if (mesh.material?.color && selectedColor) {
-            mesh.material.color.setHex(selectedColor);
-          }
-        });
-      }
-    }
-
-    showToast(
-      `${info.title}: fakkii barnootaa filatame.`,
-      "success"
-    );
+    notify(`${view} view selected.`);
   }
 
-  function initAnatomy() {
-    $$("[data-anatomy]").forEach(button => {
-      button.addEventListener("click", () => {
-        selectAnatomy(button.dataset.anatomy);
-      });
-    });
-  }
-
-  /* ==========================================================
-     WELLNESS SCORE HELPERS
-     ========================================================== */
-
-  function getSelectedNumber(name) {
-    const selected = $(
-      `input[name="${name}"]:checked`
-    );
-
-    if (!selected) return null;
-
-    const value = Number(selected.value);
-
-    return Number.isFinite(value) ? value : null;
-  }
-
-  function getFieldValue(selectors) {
-    const list = Array.isArray(selectors) ? selectors : [selectors];
-
-    for (const selector of list) {
-      const element = $(selector);
-
-      if (element && element.value !== "") {
-        return element.value;
-      }
-    }
-
-    return "";
-  }
-
-  function calculateFatigueLevel(score) {
-    if (score <= 25) {
-      return {
-        label: "Mallattoo dadhabbii xiqqaa",
-        className: "success",
-        advice:
-          "Yeroo ammaa deebiin kee mallattoo dadhabbii muraasa agarsiisa. Hirriba gaarii, boqonnaa fi nyaata madaalawaa itti fufi."
-      };
-    }
-
-    if (score <= 55) {
-      return {
-        label: "Mallattoo dadhabbii giddu-galeessaa",
-        className: "warning",
-        advice:
-          "Dadhabbiin tokko tokko jiraachuu danda'a. Hirriba, hojii, bishaan dhuguu fi stress kee ilaali. Yoo itti fufe, ogeessa fayyaa mari'adhu."
-      };
-    }
-
-    return {
-      label: "Mallattoo dadhabbii baay'ee",
-      className: "danger",
-      advice:
-        "Deebiin kee dadhabbii cimaa ofiin gabaafte agarsiisa; kun diagnosis miti. Yoo dadhabbiin kun cimaa ta'e, haaraa ta'e ykn jireenya kee miidhe, ogeessa fayyaa qunnami."
-    };
-  }
-
-  /* ==========================================================
-     VITALITY / FATIGUE SELF-CHECK
-     ========================================================== */
-
-  function runVitalityCheck() {
-    const names = [
-      "fatigue",
-      "sleepQuality",
-      "energy",
-      "stress",
-      "focus"
-    ];
-
-    const values = names.map(getSelectedNumber);
-
-    if (values.some(value => value === null)) {
-      showToast(
-        "Gaaffilee dadhabbii hunda deebisi.",
-        "warning"
-      );
+  function reset3DViewer() {
+    if (!threeReady || !threeCamera || !orbitControls) {
+      notify("The 3D viewer is not ready yet.", "warning");
       return;
     }
 
-    // Each response is expected to be 0..3.
-    const normalized = values.map(value =>
-      Math.max(0, Math.min(3, value))
-    );
+    threeCamera.position.set(4.2, 2.8, 6.5);
+    orbitControls.target.set(0, 1.35, 0);
+    orbitControls.autoRotate = Boolean(settings.autoRotate);
+    orbitControls.update();
 
-    const score = Math.round(
-      normalized.reduce((sum, value) => sum + value, 0) /
-      (normalized.length * 3) * 100
-    );
+    notify("3D view reset.", "success");
+  }
 
-    const result = calculateFatigueLevel(score);
+  function toggleAutoRotate() {
+    settings.autoRotate = !settings.autoRotate;
+    saveSettings();
 
-    const resultContainer =
-      $("#vitalityResult") ||
-      $("#fatigueResult") ||
-      $("[data-vitality-result]");
-
-    const resultTitle =
-      $("#vitalityResultTitle") ||
-      $("[data-vitality-result-title]");
-
-    const resultDescription =
-      $("#vitalityResultDescription") ||
-      $("[data-vitality-result-description]");
-
-    if (resultContainer) {
-      resultContainer.classList.remove(
-        "success",
-        "warning",
-        "danger"
-      );
-
-      resultContainer.classList.add(result.className);
-      resultContainer.hidden = false;
+    if (orbitControls) {
+      orbitControls.autoRotate = settings.autoRotate;
     }
 
-    if (resultTitle) {
-      resultTitle.textContent = result.label;
-    }
-
-    if (resultDescription) {
-      resultDescription.textContent =
-        `${result.advice} Of-madaallii kee: ${score}/100.`;
-    }
-
-    setText(
-      ["#vitalityScore", "[data-vitality-score]"],
-      `${score}/100`
-    );
-
-    const record = {
-      date: new Date().toISOString(),
-      score,
-      label: result.label
-    };
-
-    const history = readJSON(STORAGE.wellness, []);
-
-    history.unshift(record);
-
-    saveJSON(STORAGE.wellness, history.slice(0, 60));
-
-    showToast(
-      "Vitality self-check xumurame. Bu'aan isaa diagnosis miti.",
-      "success"
+    notify(
+      `Auto-rotate ${settings.autoRotate ? "enabled" : "disabled"}.`
     );
   }
 
-  function initVitalityCheck() {
-    [
-      "#runVitalityCheck",
-      "#checkFatigue",
-      '[data-action="vitality-check"]'
-    ].forEach(selector => {
-      $$(selector).forEach(button => {
-        button.addEventListener("click", runVitalityCheck);
+  function toggleSkeleton() {
+    settings.showSkeleton = !settings.showSkeleton;
+    saveSettings();
+
+    if (skeletonGroup) {
+      skeletonGroup.visible = settings.showSkeleton;
+    }
+
+    notify(
+      `Illustrative skeleton overlay ${
+        settings.showSkeleton ? "enabled" : "disabled"
+      }.`
+    );
+  }
+
+  function toggleGrid() {
+    settings.showGrid = !settings.showGrid;
+    saveSettings();
+
+    if (gridHelper) {
+      gridHelper.visible = settings.showGrid;
+    }
+
+    notify(`3D grid ${settings.showGrid ? "enabled" : "disabled"}.`);
+  }
+
+  /* -------------------- WELLNESS SELF-CHECK -------------------- */
+
+  const wellnessQuestions = [
+    {
+      id: "energy",
+      title: "How would you describe your energy today?",
+      options: [
+        { label: "Very low", score: 0 },
+        { label: "Low", score: 1 },
+        { label: "Moderate", score: 2 },
+        { label: "Good", score: 3 },
+        { label: "Excellent", score: 4 }
+      ]
+    },
+    {
+      id: "sleep",
+      title: "How was your sleep last night?",
+      options: [
+        { label: "Very poor", score: 0 },
+        { label: "Poor", score: 1 },
+        { label: "Fair", score: 2 },
+        { label: "Good", score: 3 },
+        { label: "Very good", score: 4 }
+      ]
+    },
+    {
+      id: "stress",
+      title: "How manageable does your stress feel today?",
+      options: [
+        { label: "Not manageable", score: 0 },
+        { label: "Difficult", score: 1 },
+        { label: "Somewhat manageable", score: 2 },
+        { label: "Mostly manageable", score: 3 },
+        { label: "Very manageable", score: 4 }
+      ]
+    },
+    {
+      id: "movement",
+      title: "Have you had some movement or exercise today?",
+      options: [
+        { label: "Not yet", score: 0 },
+        { label: "A little", score: 1 },
+        { label: "Some", score: 2 },
+        { label: "A good amount", score: 3 },
+        { label: "Plenty", score: 4 }
+      ]
+    },
+    {
+      id: "hydration",
+      title: "How well have you stayed hydrated today?",
+      options: [
+        { label: "Very poorly", score: 0 },
+        { label: "Poorly", score: 1 },
+        { label: "Fairly", score: 2 },
+        { label: "Well", score: 3 },
+        { label: "Very well", score: 4 }
+      ]
+    }
+  ];
+
+  function getQuestionnaireContainer() {
+    return (
+      byId("wellnessQuestions") ||
+      byId("selfCheckQuestions") ||
+      $("[data-wellness-questions]")
+    );
+  }
+
+  function renderWellnessQuestions() {
+    const container = getQuestionnaireContainer();
+    if (!container) return;
+
+    container.replaceChildren();
+
+    wellnessQuestions.forEach((question, index) => {
+      const fieldset = document.createElement("fieldset");
+      fieldset.className = "wellness-question";
+
+      const legend = document.createElement("legend");
+      legend.textContent = `${index + 1}. ${question.title}`;
+
+      fieldset.appendChild(legend);
+
+      question.options.forEach((option) => {
+        const label = document.createElement("label");
+        label.className = "wellness-option";
+
+        const input = document.createElement("input");
+        input.type = "radio";
+        input.name = question.id;
+        input.value = String(option.score);
+        input.required = true;
+
+        const text = document.createElement("span");
+        text.textContent = option.label;
+
+        label.append(input, text);
+        fieldset.appendChild(label);
       });
+
+      container.appendChild(fieldset);
     });
   }
 
-  /* ==========================================================
-     MENTAL WELLNESS SELF-CHECK
-     ========================================================== */
+  function runWellnessCheck() {
+    const answers = {};
 
-  function runMoodSelfCheck() {
-    const names = [
-      "mood",
-      "interest",
-      "sleep",
-      "energy",
-      "focus",
-      "hopelessness"
-    ];
-
-    const values = names.map(getSelectedNumber);
-
-    if (values.some(value => value === null)) {
-      showToast(
-        "Gaaffilee hunda deebisi; deebii dhiiste jira.",
-        "warning"
+    for (const question of wellnessQuestions) {
+      const selected = $(
+        `input[name="${question.id}"]:checked`
       );
-      return;
+
+      if (!selected) {
+        notify("Please answer every wellness question.", "warning");
+        return null;
+      }
+
+      answers[question.id] = Number(selected.value);
     }
 
-    const normalized = values.map(value =>
-      Math.max(0, Math.min(3, value))
+    const total = Object.values(answers).reduce(
+      (sum, value) => sum + value,
+      0
     );
 
-    const total = normalized.reduce((sum, value) => sum + value, 0);
+    const maximum = wellnessQuestions.length * 4;
+    const percentage = Math.round((total / maximum) * 100);
 
-    const resultContainer =
-      $("#moodCheckResult") ||
-      $("#mentalWellnessResult") ||
-      $("[data-mood-result]");
+    let summary;
+    let recommendation;
 
-    const title =
-      $("#moodCheckResultTitle") ||
-      $("[data-mood-result-title]");
-
-    const description =
-      $("#moodCheckResultDescription") ||
-      $("[data-mood-result-description]");
-
-    let level;
-    let advice;
-    let resultClass;
-
-    if (total <= 5) {
-      level = "Mallattoo xiqqaa";
-      resultClass = "success";
-      advice =
-        "Deebiin kee gaaffilee kana keessatti rakkoo muraasa agarsiisa. Haa ta'u malee, ofii kee akkamitti akka sitti dhaga'amu xiyyeeffadhu; gaaffileen kun diagnosis miti.";
-    } else if (total <= 11) {
-      level = "Mallattoo giddu-galeessaa";
-      resultClass = "warning";
-      advice =
-        "Deebiin kee rakkoo miiraa ykn dadhabbii tokko tokko jiraachuu danda'u agarsiisa. Nama amanamtu waliin haasa'i, boqonnaa fudhadhu, yoo itti fufe ogeessa fayyaa sammuu mari'adhu.";
+    if (percentage >= 80) {
+      summary = "Your self-reported wellness feels positive today.";
+      recommendation =
+        "Keep up helpful routines, rest when needed, and stay hydrated.";
+    } else if (percentage >= 60) {
+      summary = "Your self-reported wellness is mixed but generally steady.";
+      recommendation =
+        "Consider a short walk, regular meals, rest, and a calming break.";
+    } else if (percentage >= 40) {
+      summary = "You reported some areas that may need attention.";
+      recommendation =
+        "Choose one manageable step today and consider talking to someone you trust if concerns persist.";
     } else {
-      level = "Mallattoo xiyyeeffannoo barbaadu";
-      resultClass = "danger";
-      advice =
-        "Deebiin kee rakkoo miiraa hedduu akka si mudachaa jiru agarsiisuu danda'a. Kun depression diagnosis miti; ogeessa fayyaa ykn counsellor qunnamuun gargaarsa argachuun gaarii dha.";
+      summary = "You reported several challenges with your wellbeing today.";
+      recommendation =
+        "Be kind to yourself. Consider support from someone you trust or a qualified health professional, especially if this continues.";
     }
 
-    if (resultContainer) {
-      resultContainer.classList.remove(
-        "success",
-        "warning",
-        "danger"
+    const entry = {
+      id: `${Date.now()}`,
+      createdAt: timestamp(),
+      answers,
+      total,
+      maximum,
+      percentage,
+      summary,
+      recommendation
+    };
+
+    wellnessEntries.unshift(entry);
+    wellnessEntries = wellnessEntries.slice(0, 100);
+
+    writeStorage(STORAGE_KEYS.wellness, wellnessEntries);
+
+    const result = byId("wellnessResult") ||
+      byId("selfCheckResult") ||
+      $("[data-wellness-result]");
+
+    if (result) {
+      result.replaceChildren();
+
+      const heading = document.createElement("h3");
+      heading.textContent = `Your wellness reflection: ${percentage}%`;
+
+      const summaryParagraph = document.createElement("p");
+      summaryParagraph.textContent = summary;
+
+      const recommendationParagraph = document.createElement("p");
+      recommendationParagraph.textContent = recommendation;
+
+      const disclaimer = document.createElement("small");
+      disclaimer.textContent =
+        "This is a non-diagnostic self-reflection questionnaire. It is not a medical test, diagnosis, or substitute for professional care.";
+
+      result.append(
+        heading,
+        summaryParagraph,
+        recommendationParagraph,
+        disclaimer
       );
 
-      resultContainer.classList.add(resultClass);
-      resultContainer.hidden = false;
+      result.hidden = false;
     }
 
-    if (title) {
-      title.textContent = level;
+    updateDashboard();
+    notify("Wellness reflection saved.", "success");
+
+    return entry;
+  }
+
+  /* -------------------- BREATHING TIMER -------------------- */
+
+  let breathingInterval = null;
+  let breathingRemaining = 60;
+  let breathingRunning = false;
+  let breathingPhase = "Ready";
+
+  function updateBreathingDisplay() {
+    const timer = byId("breathingTimer") ||
+      byId("breathTimer") ||
+      $("[data-breathing-timer]");
+
+    const phase = byId("breathingPhase") ||
+      byId("breathPhase") ||
+      $("[data-breathing-phase]");
+
+    const minutes = Math.floor(breathingRemaining / 60);
+    const seconds = breathingRemaining % 60;
+    const text = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+
+    if (timer) timer.textContent = text;
+    if (phase) phase.textContent = breathingPhase;
+  }
+
+  function startBreathingExercise() {
+    if (breathingRunning) return;
+
+    breathingRunning = true;
+    breathingRemaining = 60;
+    breathingPhase = "Breathe in gently";
+
+    let elapsed = 0;
+
+    updateBreathingDisplay();
+
+    breathingInterval = window.setInterval(() => {
+      elapsed += 1;
+      breathingRemaining = Math.max(0, 60 - elapsed);
+
+      const cycle = elapsed % 8;
+
+      if (cycle < 4) {
+        breathingPhase = "Breathe in gently";
+      } else {
+        breathingPhase = "Breathe out slowly";
+      }
+
+      updateBreathingDisplay();
+
+      if (breathingRemaining <= 0) {
+        stopBreathingExercise();
+        breathingPhase = "Session complete";
+        updateBreathingDisplay();
+        notify("Breathing session completed.", "success");
+      }
+    }, 1000);
+  }
+
+  function stopBreathingExercise() {
+    if (breathingInterval !== null) {
+      clearInterval(breathingInterval);
+      breathingInterval = null;
     }
 
-    if (description) {
-      description.textContent = advice;
+    breathingRunning = false;
+
+    if (breathingRemaining > 0) {
+      breathingPhase = "Paused";
     }
 
-    const history = readJSON(STORAGE.mood, []);
+    updateBreathingDisplay();
+  }
 
-    history.unshift({
-      date: new Date().toISOString(),
-      score: total,
-      level
+  /* -------------------- HYDRATION TRACKER -------------------- */
+
+  function getWaterToday() {
+    const today = new Date().toDateString();
+
+    return hydrationEntries.filter((entry) => {
+      const date = new Date(entry.createdAt);
+
+      return !Number.isNaN(date.getTime()) &&
+        date.toDateString() === today;
+    }).length;
+  }
+
+  function addWater() {
+    hydrationEntries.unshift({
+      id: `${Date.now()}`,
+      createdAt: timestamp(),
+      amountMl: 250
     });
 
-    saveJSON(STORAGE.mood, history.slice(0, 60));
+    hydrationEntries = hydrationEntries.slice(0, 500);
+
+    writeStorage(STORAGE_KEYS.hydration, hydrationEntries);
+    updateDashboard();
+
+    const waterMessage = byId("waterMessage");
+
+    if (waterMessage) {
+      waterMessage.textContent =
+        `${getWaterToday()} logged drinks today. Each entry represents 250 ml.`;
+    }
+
+    notify("One drink logged (250 ml).", "success");
+  }
+
+  function undoWater() {
+    const today = new Date().toDateString();
+
+    const index = hydrationEntries.findIndex((entry) => {
+      const date = new Date(entry.createdAt);
+
+      return !Number.isNaN(date.getTime()) &&
+        date.toDateString() === today;
+    });
+
+    if (index === -1) {
+      notify("No drink entry to undo today.", "warning");
+      return;
+    }
+
+    hydrationEntries.splice(index, 1);
+    writeStorage(STORAGE_KEYS.hydration, hydrationEntries);
+    updateDashboard();
+
+    notify("Latest drink entry removed.");
+  }
+
+  /* -------------------- MOOD DIARY -------------------- */
+
+  function saveMood() {
+    const moodInput = byId("moodSelect") ||
+      byId("moodInput") ||
+      $("select[name='mood']");
+
+    const noteInput = byId("moodNote") ||
+      byId("moodNotes") ||
+      $("textarea[name='moodNote']");
+
+    if (!moodInput || !moodInput.value) {
+      notify("Choose a mood first.", "warning");
+      return;
+    }
+
+    moodEntries.unshift({
+      id: `${Date.now()}`,
+      createdAt: timestamp(),
+      mood: moodInput.value,
+      note: noteInput ? noteInput.value.trim().slice(0, 1000) : ""
+    });
+
+    moodEntries = moodEntries.slice(0, 100);
+
+    writeStorage(STORAGE_KEYS.mood, moodEntries);
+
+    if (noteInput) noteInput.value = "";
 
     renderMoodHistory();
-
-    showToast(
-      "Self-check xumurame. Kun depression ykn dhukkuba sammuu mirkaneessuuf hin tajaajilu.",
-      "success"
-    );
+    notify("Mood entry saved privately in this browser.", "success");
   }
 
   function renderMoodHistory() {
-    const history = readJSON(STORAGE.mood, []);
-
-    const container =
-      $("#moodHistory") ||
+    const container = byId("moodHistory") ||
       $("[data-mood-history]");
 
     if (!container) return;
 
     container.replaceChildren();
 
-    if (!history.length) {
-      const empty = document.createElement("div");
-      empty.className = "empty-state";
-      empty.textContent = "Mood self-check galmaa'e hin jiru.";
+    if (moodEntries.length === 0) {
+      const empty = document.createElement("p");
+      empty.textContent = "No mood entries yet.";
       container.appendChild(empty);
       return;
     }
 
-    history.slice(0, 10).forEach(item => {
-      const entry = document.createElement("div");
-      entry.className = "journal-entry";
+    moodEntries.slice(0, 10).forEach((entry) => {
+      const item = document.createElement("article");
 
-      const header = document.createElement("div");
-      header.className = "journal-entry-header";
-
-      const title = document.createElement("h4");
-      title.textContent = item.level || "Mood self-check";
+      const title = document.createElement("strong");
+      title.textContent = entry.mood;
 
       const date = document.createElement("small");
-      date.textContent = formatDate(new Date(item.date));
-
-      const details = document.createElement("p");
-      details.textContent =
-        `Score of-madaallii: ${item.score ?? "—"}. Kun diagnosis miti.`;
-
-      header.append(title, date);
-      entry.append(header, details);
-
-      container.appendChild(entry);
-    });
-  }
-
-  function initMoodSelfCheck() {
-    [
-      "#runMoodCheck",
-      "#checkMentalWellness",
-      '[data-action="mood-check"]'
-    ].forEach(selector => {
-      $$(selector).forEach(button => {
-        button.addEventListener("click", runMoodSelfCheck);
-      });
-    });
-
-    renderMoodHistory();
-
-    $$("[data-mood]").forEach(button => {
-      button.addEventListener("click", () => {
-        state.selectedMood = button.dataset.mood;
-
-        $$("[data-mood]").forEach(item => {
-          item.classList.toggle("active", item === button);
-        });
-
-        showToast(
-          `Mood kee filatame: ${state.selectedMood}`,
-          "success"
-        );
-      });
-    });
-
-    const saveMoodButton =
-      $("#saveMood") ||
-      $('[data-action="save-mood"]');
-
-    saveMoodButton?.addEventListener("click", () => {
-      if (!state.selectedMood) {
-        showToast("Dura mood kee filadhu.", "warning");
-        return;
-      }
-
-      const note =
-        getFieldValue(["#moodNote", "#moodJournalNote"]);
-
-      const journal = readJSON(STORAGE.journal, []);
-
-      journal.unshift({
-        date: new Date().toISOString(),
-        mood: state.selectedMood,
-        note: String(note).slice(0, 2000)
-      });
-
-      saveJSON(STORAGE.journal, journal.slice(0, 100));
-
-      const textarea = $("#moodNote") || $("#moodJournalNote");
-
-      if (textarea) textarea.value = "";
-
-      showToast("Mood journal browser keessatti kuufame.", "success");
-
-      renderJournal();
-    });
-  }
-
-  /* ==========================================================
-     JOURNAL
-     ========================================================== */
-
-  function renderJournal() {
-    const container =
-      $("#journalHistory") ||
-      $("[data-journal-history]");
-
-    if (!container) return;
-
-    const journal = readJSON(STORAGE.journal, []);
-
-    container.replaceChildren();
-
-    if (!journal.length) {
-      const empty = document.createElement("div");
-      empty.className = "empty-state";
-      empty.textContent = "Journal galmaa'e hin jiru.";
-      container.appendChild(empty);
-      return;
-    }
-
-    journal.slice(0, 20).forEach(item => {
-      const entry = document.createElement("article");
-      entry.className = "journal-entry";
-
-      const header = document.createElement("div");
-      header.className = "journal-entry-header";
-
-      const title = document.createElement("h4");
-      title.textContent = `Mood: ${item.mood}`;
-
-      const date = document.createElement("small");
-      date.textContent = formatDate(new Date(item.date));
+      date.textContent = ` — ${formatDate(new Date(entry.createdAt))}`;
 
       const note = document.createElement("p");
-      note.textContent = item.note || "Yaadannoo hin dabalamin.";
+      note.textContent = entry.note || "No note added.";
 
-      header.append(title, date);
-      entry.append(header, note);
-
-      container.appendChild(entry);
+      item.append(title, date, note);
+      container.appendChild(item);
     });
   }
 
-  /* ==========================================================
-     BREATHING TIMER
-     ========================================================== */
+  /* -------------------- SLEEP LOG -------------------- */
 
-  function updateBreathingUI(instruction, seconds) {
-    setText(
-      [
-        "#breathingInstruction",
-        "[data-breathing-instruction]"
-      ],
-      instruction
-    );
+  function saveSleep() {
+    const hoursInput = byId("sleepHours") ||
+      $("input[name='sleepHours']");
 
-    setText(
-      [
-        "#breathingTimer",
-        "#breathingSeconds",
-        "[data-breathing-timer]"
-      ],
-      String(seconds)
-    );
+    const qualityInput = byId("sleepQuality") ||
+      $("select[name='sleepQuality']");
 
-    const orb = $("#breathingOrb") || $(".breathing-orb");
+    const hours = Number(hoursInput?.value);
+    const quality = qualityInput?.value || "not specified";
 
-    if (orb) {
-      orb.classList.toggle("active", state.breathingRunning);
-    }
-  }
-
-  function stopBreathingTimer() {
-    state.breathingRunning = false;
-
-    if (state.breathingTimer) {
-      clearTimeout(state.breathingTimer);
-      state.breathingTimer = null;
-    }
-
-    if (state.breathingInterval) {
-      clearInterval(state.breathingInterval);
-      state.breathingInterval = null;
-    }
-
-    updateBreathingUI("Yeroo boqonnaa qopheessi", 0);
-  }
-
-  function startBreathingTimer() {
-    if (state.breathingRunning) return;
-
-    state.breathingRunning = true;
-
-    const cycle = [
-      { label: "Hafuura keessa fudhadhu", seconds: 4 },
-      { label: "Hafuura suuta baasi", seconds: 6 }
-    ];
-
-    let cycleIndex = 0;
-    let remaining = cycle[0].seconds;
-
-    updateBreathingUI(cycle[0].label, remaining);
-
-    const tick = () => {
-      if (!state.breathingRunning) return;
-
-      remaining -= 1;
-
-      if (remaining <= 0) {
-        cycleIndex = (cycleIndex + 1) % cycle.length;
-        remaining = cycle[cycleIndex].seconds;
-      }
-
-      updateBreathingUI(
-        cycle[cycleIndex].label,
-        remaining
-      );
-    };
-
-    state.breathingInterval = window.setInterval(tick, 1000);
-
-    showToast(
-      "Breathing timer jalqabe. Yoo mataa naanna'uun ykn rakkina hafuuraa sitti dhaga'ame, dhaabi.",
-      "success"
-    );
-  }
-
-  function initBreathingTimer() {
-    [
-      "#startBreathing",
-      '[data-action="start-breathing"]'
-    ].forEach(selector => {
-      $$(selector).forEach(button => {
-        button.addEventListener("click", startBreathingTimer);
-      });
-    });
-
-    [
-      "#stopBreathing",
-      '[data-action="stop-breathing"]'
-    ].forEach(selector => {
-      $$(selector).forEach(button => {
-        button.addEventListener("click", stopBreathingTimer);
-      });
-    });
-  }
-
-  /* ==========================================================
-     HYDRATION TRACKER
-     ========================================================== */
-
-  function getHydrationData() {
-    const data = readJSON(STORAGE.hydration, {});
-
-    if (data.date !== getTodayKey()) {
-      return {
-        date: getTodayKey(),
-        glasses: 0,
-        entries: []
-      };
-    }
-
-    return {
-      date: getTodayKey(),
-      glasses: Number(data.glasses) || 0,
-      entries: Array.isArray(data.entries) ? data.entries : []
-    };
-  }
-
-  function updateHydrationUI() {
-    const data = getHydrationData();
-
-    setText(
-      [
-        "#waterCount",
-        "#hydrationCount",
-        "[data-water-count]"
-      ],
-      String(data.glasses)
-    );
-
-    setText(
-      [
-        "#waterProgressText",
-        "[data-water-progress]"
-      ],
-      `${data.glasses} glass`
-    );
-
-    const progress = Math.min(
-      100,
-      Math.round((data.glasses / 8) * 100)
-    );
-
-    [
-      "#waterProgress",
-      "#hydrationProgress",
-      "[data-water-progress-bar]"
-    ].forEach(selector => {
-      $$(selector).forEach(element => {
-        element.style.width = `${progress}%`;
-      });
-    });
-  }
-
-  function addWater() {
-    const data = getHydrationData();
-
-    data.glasses += 1;
-
-    data.entries.unshift({
-      date: new Date().toISOString()
-    });
-
-    saveJSON(STORAGE.hydration, data);
-
-    updateHydrationUI();
-    renderHydrationHistory();
-
-    showToast(
-      "Galmeen bishaan dhuguu dabale. Fedhii fi haala fayyaa keetiin madaali.",
-      "success"
-    );
-  }
-
-  function removeWater() {
-    const data = getHydrationData();
-
-    if (data.glasses <= 0) {
-      showToast("Galmee bishaanii hir'isuuf hin jiru.", "warning");
+    if (!Number.isFinite(hours) || hours < 0 || hours > 24) {
+      notify("Enter sleep hours between 0 and 24.", "warning");
       return;
     }
 
-    data.glasses -= 1;
-    data.entries.shift();
-
-    saveJSON(STORAGE.hydration, data);
-
-    updateHydrationUI();
-    renderHydrationHistory();
-  }
-
-  function renderHydrationHistory() {
-    const container =
-      $("#hydrationHistory") ||
-      $("[data-hydration-history]");
-
-    if (!container) return;
-
-    const data = getHydrationData();
-
-    container.replaceChildren();
-
-    if (!data.entries.length) {
-      const empty = document.createElement("div");
-      empty.className = "empty-state";
-      empty.textContent = "Har'a galmeen bishaanii hin jiru.";
-      container.appendChild(empty);
-      return;
-    }
-
-    data.entries.slice(0, 12).forEach(entryData => {
-      const entry = document.createElement("div");
-      entry.className = "journal-entry";
-
-      const text = document.createElement("p");
-      text.textContent =
-        `Glass bishaanii — ${formatTime(new Date(entryData.date))}`;
-
-      entry.appendChild(text);
-      container.appendChild(entry);
-    });
-  }
-
-  function initHydration() {
-    [
-      "#addWater",
-      '[data-action="add-water"]'
-    ].forEach(selector => {
-      $$(selector).forEach(button => {
-        button.addEventListener("click", addWater);
-      });
+    sleepEntries.unshift({
+      id: `${Date.now()}`,
+      createdAt: timestamp(),
+      hours,
+      quality
     });
 
-    [
-      "#removeWater",
-      '[data-action="remove-water"]'
-    ].forEach(selector => {
-      $$(selector).forEach(button => {
-        button.addEventListener("click", removeWater);
-      });
-    });
+    sleepEntries = sleepEntries.slice(0, 100);
+    writeStorage(STORAGE_KEYS.sleep, sleepEntries);
 
-    updateHydrationUI();
-    renderHydrationHistory();
+    renderSleepHistory();
+    notify("Sleep entry saved.", "success");
   }
-
-  /* ==========================================================
-     SLEEP LOG
-     ========================================================== */
 
   function renderSleepHistory() {
-    const container =
-      $("#sleepHistory") ||
+    const container = byId("sleepHistory") ||
       $("[data-sleep-history]");
 
     if (!container) return;
 
-    const records = readJSON(STORAGE.sleep, []);
-
     container.replaceChildren();
 
-    if (!records.length) {
-      const empty = document.createElement("div");
-      empty.className = "empty-state";
-      empty.textContent = "Sleep log galmaa'e hin jiru.";
+    sleepEntries.slice(0, 10).forEach((entry) => {
+      const item = document.createElement("p");
+
+      item.textContent =
+        `${formatDate(new Date(entry.createdAt))}: ${entry.hours} hours, quality: ${entry.quality}`;
+
+      container.appendChild(item);
+    });
+
+    if (sleepEntries.length === 0) {
+      const empty = document.createElement("p");
+      empty.textContent = "No sleep records yet.";
       container.appendChild(empty);
+    }
+  }
+
+  /* -------------------- REPORT GENERATOR -------------------- */
+
+  function createReportText() {
+    const latestWellness = wellnessEntries[0];
+    const todayWater = getWaterToday();
+
+    const report = [
+      "NAOL HEALTH SCANNER 3D",
+      "PERSONAL WELLNESS REFLECTION",
+      "========================================",
+      `Generated: ${new Date().toLocaleString()}`,
+      "",
+      "IMPORTANT NOTICE",
+      "This report is for personal wellness tracking only.",
+      "It is not a diagnosis, medical scan, or medical advice.",
+      "",
+      "PHOTO CAPTURES",
+      `Saved photos: ${captures.length}`,
+      "",
+      "HYDRATION TRACKER",
+      `Logged drinks today: ${todayWater}`,
+      `Logged amount (assuming 250 ml per entry): ${todayWater * 250} ml`,
+      "",
+      "WELLNESS SELF-CHECK"
+    ];
+
+    if (latestWellness) {
+      report.push(
+        `Latest check: ${new Date(latestWellness.createdAt).toLocaleString()}`,
+        `Reflection score: ${latestWellness.percentage}%`,
+        latestWellness.summary,
+        latestWellness.recommendation
+      );
+    } else {
+      report.push("No wellness self-check has been recorded.");
+    }
+
+    report.push("", "MOOD HISTORY");
+
+    if (moodEntries.length) {
+      moodEntries.slice(0, 10).forEach((entry) => {
+        report.push(
+          `${new Date(entry.createdAt).toLocaleString()} — ${entry.mood}: ${entry.note}`
+        );
+      });
+    } else {
+      report.push("No mood entries recorded.");
+    }
+
+    report.push("", "SLEEP HISTORY");
+
+    if (sleepEntries.length) {
+      sleepEntries.slice(0, 10).forEach((entry) => {
+        report.push(
+          `${new Date(entry.createdAt).toLocaleString()} — ${entry.hours} hours; ${entry.quality}`
+        );
+      });
+    } else {
+      report.push("No sleep entries recorded.");
+    }
+
+    report.push(
+      "",
+      "Privacy: report generated in this browser.",
+      "The illustrated 3D body is not a real anatomical scan.",
+      "Seek qualified medical care for medical concerns."
+    );
+
+    return report.join("\n");
+  }
+
+  function downloadReport() {
+    const reportText = createReportText();
+    const blob = new Blob([reportText], {
+      type: "text/plain;charset=utf-8"
+    });
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = `naol-wellness-report-${new Date().toISOString().slice(0, 10)}.txt`;
+
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    URL.revokeObjectURL(url);
+
+    notify("Wellness report downloaded.", "success");
+  }
+
+  function showReportPreview() {
+    const target = byId("reportPreview") ||
+      byId("wellnessReport") ||
+      $("[data-report-preview]");
+
+    if (!target) {
+      downloadReport();
       return;
     }
 
-    records.slice(0, 15).forEach(record => {
-      const entry = document.createElement("div");
-      entry.className = "journal-entry";
-
-      const header = document.createElement("div");
-      header.className = "journal-entry-header";
-
-      const title = document.createElement("h4");
-      title.textContent = `${record.hours} sa'aatii`;
-
-      const date = document.createElement("small");
-      date.textContent = formatDate(new Date(record.date));
-
-      const description = document.createElement("p");
-      description.textContent =
-        `Sleep quality: ${record.quality || "hin ibsamne"}`;
-
-      header.append(title, date);
-      entry.append(header, description);
-
-      container.appendChild(entry);
-    });
+    target.textContent = createReportText();
+    target.hidden = false;
   }
 
-  function initSleepLog() {
-    const saveButton =
-      $("#saveSleep") ||
-      $('[data-action="save-sleep"]');
+  /* -------------------- SETTINGS -------------------- */
 
-    saveButton?.addEventListener("click", () => {
-      const hours = Number(
-        getFieldValue(["#sleepHours", "#sleepDuration"])
-      );
+  function applyTheme() {
+    const theme = settings.theme === "light" ? "light" : "dark";
 
-      const quality = getFieldValue([
-        "#sleepQualityLog",
-        "#sleepQualitySelect"
-      ]);
+    document.documentElement.dataset.theme = theme;
+    document.body.dataset.theme = theme;
 
-      if (!Number.isFinite(hours) || hours < 0 || hours > 24) {
-        showToast(
-          "Sa'aatii hirribaa sirriitti galchi (0 hanga 24).",
-          "warning"
-        );
-        return;
-      }
+    document.documentElement.classList.toggle(
+      "theme-light",
+      theme === "light"
+    );
 
-      const records = readJSON(STORAGE.sleep, []);
+    document.documentElement.classList.toggle(
+      "theme-dark",
+      theme === "dark"
+    );
 
-      records.unshift({
-        date: new Date().toISOString(),
-        hours,
-        quality
-      });
+    const themeButton = byId("toggleTheme") ||
+      byId("themeToggle");
 
-      saveJSON(STORAGE.sleep, records.slice(0, 100));
-
-      renderSleepHistory();
-
-      showToast("Sleep log browser keessatti kuufame.", "success");
-    });
-
-    renderSleepHistory();
+    if (themeButton) {
+      themeButton.textContent =
+        theme === "light" ? "Switch to dark mode" : "Switch to light mode";
+    }
   }
 
-  /* ==========================================================
-     POSTURE / BODY MEASUREMENT INPUT
-     ========================================================== */
-
-  function initMeasurementTools() {
-    const form =
-      $("#measurementForm") ||
-      $('[data-form="measurements"]');
-
-    if (!form) return;
-
-    form.addEventListener("submit", event => {
-      event.preventDefault();
-
-      const height = Number(
-        getFieldValue(["#heightCm", "#userHeight"])
-      );
-
-      const weight = Number(
-        getFieldValue(["#weightKg", "#userWeight"])
-      );
-
-      const result =
-        $("#measurementResult") ||
-        $("[data-measurement-result]");
-
-      if (!Number.isFinite(height) || height < 50 || height > 260) {
-        showToast(
-          "Dheerina cm keessatti galchi (50–260 cm).",
-          "warning"
-        );
-        return;
-      }
-
-      if (!Number.isFinite(weight) || weight < 10 || weight > 500) {
-        showToast(
-          "Ulfaatina kg keessatti galchi (10–500 kg).",
-          "warning"
-        );
-        return;
-      }
-
-      const bmi = weight / Math.pow(height / 100, 2);
-
-      let category = "Bu'aa kana ogeessa fayyaa waliin mari'adhu.";
-
-      if (bmi < 18.5) {
-        category = "BMI gadi-aanaa.";
-      } else if (bmi < 25) {
-        category = "BMI range waliigalaa keessatti.";
-      } else if (bmi < 30) {
-        category = "BMI ol-ka'aa.";
-      } else {
-        category = "BMI baay'ee ol-ka'aa.";
-      }
-
-      if (result) {
-        result.hidden = false;
-
-        result.textContent =
-          `BMI tilmaamaa: ${bmi.toFixed(1)}. ${category} ` +
-          "BMI qofa fayyadamuun dhukkuba adda baasuuf hin danda'amu.";
-      }
-
-      showToast(
-        "BMI shallagame. Kun madaallii fayyaa guutuu miti.",
-        "success"
-      );
-    });
+  function toggleTheme() {
+    settings.theme = settings.theme === "light" ? "dark" : "light";
+    saveSettings();
+    applyTheme();
+    notify(`Theme changed to ${settings.theme} mode.`);
   }
 
-  /* ==========================================================
-     FACE / POSE SAFETY
-     ========================================================== */
-
-  function initCameraPrivacyNotice() {
-    const buttons = $$("[data-action='face-check']");
-
-    buttons.forEach(button => {
-      button.addEventListener("click", () => {
-        showToast(
-          "Website kun fuula arguu danda'a yoo camera fi face-tracking engine sirrii jiraate; fuula qofaan depression, stress ykn dhibee adda baasuu hin danda'u.",
-          "warning"
-        );
-      });
-    });
-
-    $$("[data-action='finger-check']").forEach(button => {
-      button.addEventListener("click", () => {
-        showToast(
-          "Screen irratti quba kaa'uun website idilee keessatti depression ykn biometrics fayyaa mirkanaa'oo hin safaru.",
-          "warning"
-        );
-      });
-    });
-  }
-
-  /* ==========================================================
-     REPORT EXPORT
-     ========================================================== */
-
-  function buildWellnessReport() {
-    const mood = readJSON(STORAGE.mood, []);
-    const wellness = readJSON(STORAGE.wellness, []);
-    const sleep = readJSON(STORAGE.sleep, []);
-    const hydration = getHydrationData();
-    const journal = readJSON(STORAGE.journal, []);
-
-    return {
-      application: "Naol Health Scanner 3D",
-      reportGeneratedAt: new Date().toISOString(),
-      notice:
-        "This is a self-reported wellness summary, not a medical diagnosis.",
-      cameraCaptures: Object.entries(state.captures).map(
-        ([angle, capture]) => ({
-          angle,
-          captured: Boolean(capture),
-          capturedAt: capture?.capturedAt || null,
-          width: capture?.width || null,
-          height: capture?.height || null
-        })
-      ),
-      todayHydration: {
-        date: hydration.date,
-        glassesLogged: hydration.glasses
-      },
-      moodSelfChecks: mood.slice(0, 20),
-      vitalitySelfChecks: wellness.slice(0, 20),
-      sleepLogs: sleep.slice(0, 20),
-      moodJournal: journal.slice(0, 20)
+  function loadSettingsIntoForm() {
+    const mapping = {
+      autoRotate: settings.autoRotate,
+      rotationSpeed: settings.rotationSpeed,
+      scanSound: settings.scanSound,
+      autosave: settings.autosave,
+      showGrid: settings.showGrid,
+      showSkeleton: settings.showSkeleton,
+      hydrationGoal: settings.hydrationGoal
     };
+
+    Object.entries(mapping).forEach(([name, value]) => {
+      const element = byId(name) ||
+        $(`[name="${name}"]`) ||
+        $(`[data-setting="${name}"]`);
+
+      if (!element) return;
+
+      if (element.type === "checkbox") {
+        element.checked = Boolean(value);
+      } else {
+        element.value = String(value);
+      }
+    });
+
+    const resolution = byId("cameraResolution");
+
+    if (resolution) {
+      resolution.value =
+        `${settings.cameraWidth}x${settings.cameraHeight}`;
+    }
+
+    applyTheme();
   }
 
-  function downloadWellnessReport() {
-    const report = buildWellnessReport();
-
-    downloadText(
-      JSON.stringify(report, null, 2),
-      `naol-wellness-report-${getTodayKey()}.json`,
-      "application/json"
-    );
-
-    showToast(
-      "Wellness report buufatame. Kun diagnosis fayyaa miti.",
-      "success"
-    );
-  }
-
-  function downloadWellnessCSV() {
-    const report = buildWellnessReport();
-
-    const rows = [
-      ["Section", "Date", "Score / Value", "Description"]
+  function saveSettingsFromForm() {
+    const names = [
+      "autoRotate",
+      "rotationSpeed",
+      "scanSound",
+      "autosave",
+      "showGrid",
+      "showSkeleton",
+      "hydrationGoal"
     ];
 
-    report.moodSelfChecks.forEach(item => {
-      rows.push([
-        "Mood self-check",
-        item.date,
-        item.score,
-        item.level
-      ]);
+    names.forEach((name) => {
+      const element = byId(name) ||
+        $(`[name="${name}"]`) ||
+        $(`[data-setting="${name}"]`);
+
+      if (!element) return;
+
+      if (element.type === "checkbox") {
+        settings[name] = element.checked;
+      } else if (name === "rotationSpeed" ||
+                 name === "hydrationGoal") {
+        const value = Number(element.value);
+
+        if (Number.isFinite(value)) {
+          settings[name] = value;
+        }
+      }
     });
 
-    report.vitalitySelfChecks.forEach(item => {
-      rows.push([
-        "Vitality self-check",
-        item.date,
-        item.score,
-        item.label
-      ]);
-    });
+    const resolution = byId("cameraResolution");
 
-    report.sleepLogs.forEach(item => {
-      rows.push([
-        "Sleep",
-        item.date,
-        item.hours,
-        item.quality || ""
-      ]);
-    });
+    if (resolution?.value) {
+      const match = resolution.value.match(/^(\d+)x(\d+)$/);
 
-    rows.push([
-      "Hydration",
-      report.todayHydration.date,
-      report.todayHydration.glassesLogged,
-      "Glasses logged today"
-    ]);
+      if (match) {
+        settings.cameraWidth = Number(match[1]);
+        settings.cameraHeight = Number(match[2]);
+      }
+    }
 
-    const csv = rows.map(row =>
-      row.map(value => {
-        const text = String(value ?? "");
-        return `"${text.replace(/"/g, '""')}"`;
-      }).join(",")
-    ).join("\r\n");
-
-    downloadText(
-      csv,
-      `naol-wellness-report-${getTodayKey()}.csv`,
-      "text/csv"
+    settings.rotationSpeed = clamp(
+      Number(settings.rotationSpeed) || 0.5,
+      0.1,
+      3
     );
 
-    showToast("CSV report buufatame.", "success");
-  }
-
-  function initExports() {
-    [
-      "#downloadReport",
-      '[data-action="download-report"]'
-    ].forEach(selector => {
-      $$(selector).forEach(button => {
-        button.addEventListener("click", downloadWellnessReport);
-      });
-    });
-
-    [
-      "#downloadCSV",
-      '[data-action="download-csv"]'
-    ].forEach(selector => {
-      $$(selector).forEach(button => {
-        button.addEventListener("click", downloadWellnessCSV);
-      });
-    });
-
-    [
-      "#downloadCaptures",
-      '[data-action="download-captures"]'
-    ].forEach(selector => {
-      $$(selector).forEach(button => {
-        button.addEventListener("click", downloadAllCaptures);
-      });
-    });
-  }
-
-  /* ==========================================================
-     HOME DASHBOARD
-     ========================================================== */
-
-  function updateDashboard() {
-    setText(
-      ["#todayDate", "[data-today-date]"],
-      formatDate()
+    settings.hydrationGoal = clamp(
+      Math.round(Number(settings.hydrationGoal) || 8),
+      1,
+      30
     );
 
-    setText(
-      ["#todayTime", "[data-today-time]"],
-      formatTime()
-    );
+    saveSettings();
 
-    const hydration = getHydrationData();
-    const mood = readJSON(STORAGE.mood, []);
-    const wellness = readJSON(STORAGE.wellness, []);
+    if (orbitControls) {
+      orbitControls.autoRotate = Boolean(settings.autoRotate);
+      orbitControls.autoRotateSpeed =
+        Number(settings.rotationSpeed) || 0.5;
+    }
 
-    setText(
-      ["#dashboardWater", "[data-dashboard-water]"],
-      String(hydration.glasses)
-    );
+    if (gridHelper) {
+      gridHelper.visible = Boolean(settings.showGrid);
+    }
 
-    setText(
-      ["#dashboardMoodChecks", "[data-dashboard-mood]"],
-      String(mood.length)
-    );
+    if (skeletonGroup) {
+      skeletonGroup.visible = Boolean(settings.showSkeleton);
+    }
 
-    setText(
-      ["#dashboardVitalityChecks", "[data-dashboard-vitality]"],
-      String(wellness.length)
-    );
-
-    const capturedCount = Object.values(state.captures)
-      .filter(Boolean).length;
-
-    setText(
-      ["#dashboardCaptures", "[data-dashboard-captures]"],
-      String(capturedCount)
-    );
-  }
-
-  function initDashboardClock() {
     updateDashboard();
-
-    window.setInterval(() => {
-      setText(
-        ["#todayTime", "[data-today-time]"],
-        formatTime()
-      );
-    }, 30000);
+    notify("Settings saved.", "success");
   }
 
-  /* ==========================================================
-     UNIVERSAL ACTION HANDLER
-     Allows simple HTML buttons using data-action.
-     ========================================================== */
+  function clearAllLocalData() {
+    const confirmed = window.confirm(
+      "Delete all saved photos, wellness entries, hydration logs, mood entries and sleep records from this browser? This cannot be undone."
+    );
 
-  function initUniversalActions() {
-    $$("[data-action]").forEach(button => {
-      // Prevent duplicate universal event handling.
-      if (button.dataset.naolActionBound === "true") return;
+    if (!confirmed) return;
 
-      button.dataset.naolActionBound = "true";
+    captures = [];
+    wellnessEntries = [];
+    hydrationEntries = [];
+    moodEntries = [];
+    sleepEntries = [];
 
-      const action = button.dataset.action;
+    Object.values(STORAGE_KEYS).forEach((key) => {
+      try {
+        localStorage.removeItem(key);
+      } catch (error) {
+        console.warn("Could not remove local storage:", error);
+      }
+    });
 
-      const knownActions = {
-        "go-home": () => navigateTo("dashboard"),
-        "go-scanner": () => navigateTo("scanner"),
-        "go-viewer": () => navigateTo("viewer"),
-        "go-anatomy": () => navigateTo("anatomy"),
-        "go-wellness": () => navigateTo("wellness"),
-        "go-vitality": () => navigateTo("vitality"),
-        "go-mood": () => navigateTo("mood-check"),
-        "go-breathing": () => navigateTo("breathing"),
-        "go-settings": () => navigateTo("settings"),
-        "download-report": downloadWellnessReport,
-        "download-csv": downloadWellnessCSV,
-        "download-captures": downloadAllCaptures,
-        "start-camera": startCamera,
-        "stop-camera": stopCamera,
-        "switch-camera": switchCamera,
-        "capture-photo": () => capturePhoto(state.currentAngle),
-        "start-scan": startScanWorkflow,
-        "stop-scan": () => stopScanWorkflow(false),
-        "reset-viewer": resetViewer,
-        "add-water": addWater,
-        "remove-water": removeWater,
-        "start-breathing": startBreathingTimer,
-        "stop-breathing": stopBreathingTimer,
-        "vitality-check": runVitalityCheck,
-        "mood-check": runMoodSelfCheck,
-        "save-mood": () => {
-          $('[data-action="save-mood"]')?.click();
-        },
-        "save-sleep": () => {
-          $('[data-action="save-sleep"]')?.click();
-        },
-        "clear-data": clearLocalData
-      };
+    settings = { ...defaultSettings };
 
-      const handler = knownActions[action];
+    saveSettings();
+    loadSettingsIntoForm();
+    updateDashboard();
+    renderMoodHistory();
+    renderSleepHistory();
 
-      if (handler) {
-        button.addEventListener("click", event => {
-          // The feature-specific listeners already do the work.
-          // Only handle this action if no matching feature-specific
-          // button handler has been attached by another function.
-          if (button.dataset.naolSpecificHandler === "true") {
-            return;
-          }
+    notify("Local application data cleared.", "success");
+  }
 
-          // This handler intentionally avoids preventing native
-          // form submissions and other browser behavior.
-          if (button.type === "submit") return;
+  /* -------------------- BODY REGION INFORMATION -------------------- */
 
+  const bodyRegions = {
+    head: {
+      title: "Head",
+      description:
+        "The head contains the brain and sensory organs. This illustration cannot inspect or assess them."
+    },
+    brain: {
+      title: "Brain",
+      description:
+        "The brain supports thinking, memory, sensation, movement, and many automatic body functions. This is educational information, not a brain scan."
+    },
+    heart: {
+      title: "Heart",
+      description:
+        "The heart pumps blood through the circulatory system. This viewer does not measure heart function."
+    },
+    lungs: {
+      title: "Lungs",
+      description:
+        "The lungs exchange oxygen and carbon dioxide during breathing. This viewer cannot assess lung health."
+    },
+    chest: {
+      title: "Chest",
+      description:
+        "The chest contains important organs including the heart and lungs. The 3D model is illustrative only."
+    },
+    abdomen: {
+      title: "Abdomen",
+      description:
+        "The abdomen contains digestive organs and other structures. This illustration cannot detect abnormalities."
+    },
+    stomach: {
+      title: "Stomach",
+      description:
+        "The stomach helps digest food. This application cannot examine your stomach or digestive system."
+    },
+    muscles: {
+      title: "Muscles",
+      description:
+        "Muscles help move and stabilize the body. The displayed model does not measure muscle size or strength."
+    },
+    skeleton: {
+      title: "Skeleton",
+      description:
+        "The skeleton supports the body and protects some organs. This illustrative overlay is not a bone scan."
+    },
+    arms: {
+      title: "Arms",
+      description:
+        "The arms help with lifting, reaching, and manipulating objects. This viewer does not assess injuries."
+    },
+    legs: {
+      title: "Legs",
+      description:
+        "The legs support standing and walking. This viewer cannot diagnose joint, bone, or muscle problems."
+    },
+    nervous: {
+      title: "Nervous system",
+      description:
+        "The nervous system transmits signals throughout the body. It cannot be evaluated by this illustrative viewer."
+    },
+    circulation: {
+      title: "Circulatory system",
+      description:
+        "The circulatory system transports blood, oxygen, and nutrients. This application does not measure blood flow."
+    },
+    digestive: {
+      title: "Digestive system",
+      description:
+        "The digestive system processes food and absorbs nutrients. The illustration is not an internal scan."
+    }
+  };
+
+  function showBodyRegion(regionName) {
+    const key = String(regionName || "").toLowerCase();
+    const region = bodyRegions[key];
+
+    if (!region) {
+      notify("Body region information is unavailable.", "warning");
+      return;
+    }
+
+    const title = byId("bodyRegionTitle") ||
+      byId("anatomyTitle");
+
+    const description = byId("bodyRegionDescription") ||
+      byId("anatomyDescription");
+
+    if (title) title.textContent = region.title;
+    if (description) description.textContent = region.description;
+
+    const panel = byId("bodyRegionInfo") ||
+      byId("anatomyInfo");
+
+    if (panel) panel.hidden = false;
+  }
+
+  /* -------------------- EVENT HELPERS -------------------- */
+
+  function bindClick(ids, handler) {
+    ids.forEach((id) => {
+      const element = byId(id);
+
+      if (element) {
+        element.addEventListener("click", (event) => {
+          event.preventDefault();
           handler(event);
         });
       }
     });
   }
 
-  /* ==========================================================
-     ERROR / FALLBACK HANDLING
-     ========================================================== */
+  function bindInput(ids, handler) {
+    ids.forEach((id) => {
+      const element = byId(id);
 
-  window.addEventListener("error", event => {
-    console.error("Naol Health Scanner error:", event.error);
-  });
-
-  window.addEventListener("unhandledrejection", event => {
-    console.error(
-      "Naol Health Scanner async error:",
-      event.reason
-    );
-  });
-
-  /* ==========================================================
-     INITIALIZATION
-     ========================================================== */
-
-  function initializeBasicUI() {
-    renderCaptures();
-    renderMoodHistory();
-    renderJournal();
-    updateHydrationUI();
-    renderHydrationHistory();
-    renderSleepHistory();
-    updateDashboard();
-
-    const stopButton =
-      $("#stopCamera") ||
-      $("#cameraStop") ||
-      $('[data-action="stop-camera"]');
-
-    if (stopButton) stopButton.disabled = true;
-
-    setCameraStatus("Camera hin banamne");
-
-    setProgress(0);
+      if (element) {
+        element.addEventListener("change", handler);
+      }
+    });
   }
 
-  initNavigation();
-  initDialogs();
-  initSettings();
+  /* -------------------- STANDARD BUTTONS -------------------- */
 
-  initCamera();
-  initVitalityCheck();
-  initMoodSelfCheck();
-  initBreathingTimer();
-  initHydration();
-  initSleepLog();
-  initMeasurementTools();
-  initCameraPrivacyNotice();
-  initAnatomy();
-  initExports();
-  initDashboardClock();
-  initializeBasicUI();
+  bindClick(
+    ["startCamera", "startCameraBtn", "openCamera", "cameraStart"],
+    startCamera
+  );
 
-  /*
-   * Load the 3D viewer without blocking other features.
-   * If the CDN fails, the rest of the application remains usable.
-   */
-  loadThreeJS().then(ready => {
-    if (ready) {
-      console.info("Naol Health Scanner 3D viewer ready.");
-    } else {
-      console.warn(
-        "3D viewer unavailable; other tools remain active."
-      );
+  bindClick(
+    ["stopCamera", "stopCameraBtn", "cameraStop"],
+    () => stopCamera(true)
+  );
+
+  bindClick(
+    ["switchCamera", "switchCameraBtn", "flipCamera"],
+    switchCamera
+  );
+
+  bindClick(
+    ["capturePhoto", "captureBtn", "takePhoto", "scanCapture"],
+    () => capturePhoto("front")
+  );
+
+  bindClick(
+    ["captureFront", "frontCapture"],
+    () => capturePhoto("front")
+  );
+
+  bindClick(
+    ["captureLeft", "leftCapture"],
+    () => capturePhoto("left")
+  );
+
+  bindClick(
+    ["captureRight", "rightCapture"],
+    () => capturePhoto("right")
+  );
+
+  bindClick(
+    ["captureBack", "backCapture"],
+    () => capturePhoto("back")
+  );
+
+  bindClick(
+    ["startScanSession", "start360Scan", "beginScan"],
+    startScanSession
+  );
+
+  bindClick(
+    ["captureNextView", "nextScanView", "capture360View"],
+    captureNextView
+  );
+
+  bindClick(
+    ["downloadAllCaptures", "downloadPhotos"],
+    downloadAllCaptures
+  );
+
+  bindClick(
+    ["downloadReport", "generateReport", "exportReport"],
+    downloadReport
+  );
+
+  bindClick(
+    ["previewReport", "showReport"],
+    showReportPreview
+  );
+
+  bindClick(
+    ["startWellnessCheck", "submitWellness", "runSelfCheck"],
+    runWellnessCheck
+  );
+
+  bindClick(
+    ["startBreathing", "startBreathingExercise", "breathStart"],
+    startBreathingExercise
+  );
+
+  bindClick(
+    ["stopBreathing", "stopBreathingExercise", "breathStop"],
+    stopBreathingExercise
+  );
+
+  bindClick(
+    ["addWater", "logWater", "drinkWater"],
+    addWater
+  );
+
+  bindClick(
+    ["undoWater", "removeWater"],
+    undoWater
+  );
+
+  bindClick(
+    ["saveMood", "addMood"],
+    saveMood
+  );
+
+  bindClick(
+    ["saveSleep", "addSleep"],
+    saveSleep
+  );
+
+  bindClick(
+    ["saveSettings", "applySettings"],
+    saveSettingsFromForm
+  );
+
+  bindClick(
+    ["toggleTheme", "themeToggle"],
+    toggleTheme
+  );
+
+  bindClick(
+    ["toggleAutoRotate", "autoRotateToggle"],
+    toggleAutoRotate
+  );
+
+  bindClick(
+    ["toggleSkeleton", "skeletonToggle"],
+    toggleSkeleton
+  );
+
+  bindClick(
+    ["toggleGrid", "gridToggle"],
+    toggleGrid
+  );
+
+  bindClick(
+    ["reset3DView", "resetViewer", "reset3D"],
+    reset3DViewer
+  );
+
+  bindClick(
+    ["clearLocalData", "clearData", "deleteAllData"],
+    clearAllLocalData
+  );
+
+  bindClick(
+    ["openSettings", "settingsButton"],
+    () => showSection("settings")
+  );
+
+  bindClick(
+    ["openCameraPage", "cameraPageButton"],
+    () => showSection("camera")
+  );
+
+  bindClick(
+    ["openWellnessPage", "wellnessPageButton"],
+    () => showSection("wellness")
+  );
+
+  bindClick(
+    ["openAnatomyPage", "anatomyPageButton"],
+    () => showSection("anatomy")
+  );
+
+  bindClick(
+    ["openDashboard", "dashboardButton"],
+    () => showSection("dashboard")
+  );
+
+  /* -------------------- 3D VIEW BUTTONS -------------------- */
+
+  bindClick(
+    ["viewFront", "frontView", "bodyFrontView"],
+    () => set3DView("front")
+  );
+
+  bindClick(
+    ["viewBack", "backView", "bodyBackView"],
+    () => set3DView("back")
+  );
+
+  bindClick(
+    ["viewLeft", "leftView", "bodyLeftView"],
+    () => set3DView("left")
+  );
+
+  bindClick(
+    ["viewRight", "rightView", "bodyRightView"],
+    () => set3DView("right")
+  );
+
+  bindClick(
+    ["viewTop", "topView", "bodyTopView"],
+    () => set3DView("top")
+  );
+
+  /* -------------------- DYNAMIC DATA ATTRIBUTES -------------------- */
+
+  document.addEventListener("click", (event) => {
+    const target = event.target.closest(
+      "[data-action], [data-section], [data-page-link], [data-view], [data-region]"
+    );
+
+    if (!target) return;
+
+    const action = target.dataset.action;
+    const section = target.dataset.section ||
+      target.dataset.pageLink;
+    const view = target.dataset.view;
+    const region = target.dataset.region;
+
+    if (section) {
+      event.preventDefault();
+      showSection(section);
+      return;
+    }
+
+    if (view) {
+      event.preventDefault();
+      set3DView(view);
+      return;
+    }
+
+    if (region) {
+      event.preventDefault();
+      showBodyRegion(region);
+      return;
+    }
+
+    if (!action) return;
+
+    const actions = {
+      "start-camera": startCamera,
+      "stop-camera": () => stopCamera(true),
+      "switch-camera": switchCamera,
+      "capture-photo": () => capturePhoto("front"),
+      "capture-front": () => capturePhoto("front"),
+      "capture-left": () => capturePhoto("left"),
+      "capture-right": () => capturePhoto("right"),
+      "capture-back": () => capturePhoto("back"),
+      "start-scan": startScanSession,
+      "capture-next-view": captureNextView,
+      "download-photos": downloadAllCaptures,
+      "download-report": downloadReport,
+      "preview-report": showReportPreview,
+      "wellness-check": runWellnessCheck,
+      "breathing-start": startBreathingExercise,
+      "breathing-stop": stopBreathingExercise,
+      "add-water": addWater,
+      "undo-water": undoWater,
+      "save-mood": saveMood,
+      "save-sleep": saveSleep,
+      "save-settings": saveSettingsFromForm,
+      "toggle-theme": toggleTheme,
+      "toggle-rotation": toggleAutoRotate,
+      "toggle-skeleton": toggleSkeleton,
+      "toggle-grid": toggleGrid,
+      "reset-3d": reset3DViewer,
+      "clear-data": clearAllLocalData,
+      "view-front": () => set3DView("front"),
+      "view-back": () => set3DView("back"),
+      "view-left": () => set3DView("left"),
+      "view-right": () => set3DView("right"),
+      "view-top": () => set3DView("top")
+    };
+
+    const handler = actions[action];
+
+    if (handler) {
+      event.preventDefault();
+      handler();
     }
   });
 
-  /*
-   * Prevent accidental data loss if a capture workflow is running.
-   */
+  /* -------------------- SETTING INPUT LISTENERS -------------------- */
+
+  bindInput(
+    ["autoRotate", "rotationSpeed", "scanSound", "autosave",
+     "showGrid", "showSkeleton", "hydrationGoal", "cameraResolution"],
+    () => {
+      saveSettingsFromForm();
+    }
+  );
+
+  /* -------------------- OPTIONAL MOBILE MENU -------------------- */
+
+  bindClick(
+    ["menuToggle", "mobileMenuToggle", "hamburgerButton"],
+    () => {
+      const menu =
+        byId("mobileMenu") ||
+        byId("sidebar") ||
+        $(".sidebar");
+
+      if (!menu) return;
+
+      menu.classList.toggle("open");
+      menu.classList.toggle("active");
+    }
+  );
+
+  /* -------------------- TAB SUPPORT -------------------- */
+
+  $$("[data-tab-target]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const targetId = button.dataset.tabTarget;
+
+      $$("[data-tab-target]").forEach((tab) => {
+        tab.classList.toggle("active", tab === button);
+      });
+
+      $$("[data-tab-panel]").forEach((panel) => {
+        panel.hidden = panel.dataset.tabPanel !== targetId;
+      });
+    });
+  });
+
+  /* -------------------- KEYBOARD SUPPORT -------------------- */
+
+  document.addEventListener("keydown", (event) => {
+    const activeTag = document.activeElement?.tagName;
+
+    if (
+      activeTag === "INPUT" ||
+      activeTag === "TEXTAREA" ||
+      activeTag === "SELECT" ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.altKey
+    ) {
+      return;
+    }
+
+    if (event.key === "Escape") {
+      stopBreathingExercise();
+
+      const menu =
+        byId("mobileMenu") ||
+        byId("sidebar") ||
+        $(".sidebar");
+
+      menu?.classList.remove("open", "active");
+    }
+  });
+
+  /* -------------------- PAGE VISIBILITY -------------------- */
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && cameraActive) {
+      stopCamera(false);
+      updateCameraStatus("Camera stopped while the page was hidden.", "idle");
+    }
+  });
+
   window.addEventListener("beforeunload", () => {
-    if (state.scanTimer) clearTimeout(state.scanTimer);
-    if (state.breathingInterval) clearInterval(state.breathingInterval);
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((track) => track.stop());
+    }
 
-    if (state.cameraStream) {
-      state.cameraStream.getTracks().forEach(track => track.stop());
+    if (animationFrame3D !== null) {
+      cancelAnimationFrame(animationFrame3D);
+    }
+
+    if (breathingInterval !== null) {
+      clearInterval(breathingInterval);
     }
   });
 
-  /*
-   * Expose only useful actions for HTML buttons or debugging.
-   */
-  window.NaolHealthScanner = {
-    startCamera,
-    stopCamera,
-    switchCamera,
-    capturePhoto,
-    startScanWorkflow,
-    stopScanWorkflow,
-    deleteCapture,
-    downloadCapture,
-    downloadAllCaptures,
-    resetViewer,
-    selectAnatomy,
-    runVitalityCheck,
-    runMoodSelfCheck,
-    startBreathingTimer,
-    stopBreathingTimer,
-    downloadWellnessReport,
-    downloadWellnessCSV,
-    clearLocalData,
-    getState: () => ({
-      cameraActive: state.cameraActive,
-      scanRunning: state.scanRunning,
-      captureCount: Object.values(state.captures)
-        .filter(Boolean).length,
-      threeReady: state.threeReady
-    })
-  };
+  /* -------------------- ERROR HANDLING -------------------- */
 
-  console.info("Naol Health Scanner 3D initialized.");
-}
+  window.addEventListener("error", (event) => {
+    console.error("Naol Health Scanner error:", event.message);
+  });
+
+  window.addEventListener("unhandledrejection", (event) => {
+    console.error("Naol Health Scanner async error:", event.reason);
+  });
+
+  /* -------------------- INITIALIZE APP -------------------- */
+
+  function initializeApp() {
+    applyTheme();
+    loadSettingsIntoForm();
+
+    renderWellnessQuestions();
+    renderCaptureGallery();
+    renderMoodHistory();
+    renderSleepHistory();
+
+    updateDashboard();
+    updateBreathingDisplay();
+    updateScanProgress();
+    updateCameraButtons();
+
+    init3DViewer();
+
+    console.info(
+      "Naol Health Scanner 3D initialized. This application is for educational wellness tracking, not medical diagnosis."
+    );
+  }
+
+  initializeApp();
+});
