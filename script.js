@@ -2,2685 +2,2011 @@
 
 /* ============================================================
    NAOL HEALTH SCANNER 3D
-   Complete frontend JavaScript
-   Version: 1.0.0
-
-   IMPORTANT:
-   - Educational wellness application only.
-   - Does not diagnose diseases.
-   - Camera photos are processed locally in this browser.
-   - 3D body model is illustrative, not a medical scan.
+   Complete JavaScript
+   Camera, Navigation, Wellness, Hydration, Diary, Reports,
+   Breathing Exercises, Settings and 3D Viewer
    ============================================================ */
 
-document.addEventListener("DOMContentLoaded", () => {
-  /* -------------------- UTILITIES -------------------- */
+document.addEventListener("DOMContentLoaded", function () {
 
-  const $ = (selector, root = document) => root.querySelector(selector);
-  const $$ = (selector, root = document) =>
-    Array.from(root.querySelectorAll(selector));
+    /* ========================================================
+       1. HELPER FUNCTIONS
+       ======================================================== */
 
-  const byId = (id) => document.getElementById(id);
+    const $ = (selector, parent = document) =>
+        parent.querySelector(selector);
 
-  const safeJSON = (value, fallback) => {
-    try {
-      return JSON.parse(value);
-    } catch {
-      return fallback;
-    }
-  };
+    const $$ = (selector, parent = document) =>
+        Array.from(parent.querySelectorAll(selector));
 
-  const clamp = (value, min, max) =>
-    Math.min(max, Math.max(min, value));
+    const getById = (id) => document.getElementById(id);
 
-  const timestamp = () => new Date().toISOString();
-
-  const formatDate = (date = new Date()) =>
-    date.toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric"
-    });
-
-  const formatTime = (date = new Date()) =>
-    date.toLocaleTimeString(undefined, {
-      hour: "2-digit",
-      minute: "2-digit"
-    });
-
-  const STORAGE_KEYS = {
-    settings: "naolHealthScanner.settings.v1",
-    captures: "naolHealthScanner.captures.v1",
-    wellness: "naolHealthScanner.wellness.v1",
-    hydration: "naolHealthScanner.hydration.v1",
-    mood: "naolHealthScanner.mood.v1",
-    sleep: "naolHealthScanner.sleep.v1"
-  };
-
-  function readStorage(key, fallback) {
-    try {
-      const value = localStorage.getItem(key);
-      return value === null ? fallback : safeJSON(value, fallback);
-    } catch {
-      return fallback;
-    }
-  }
-
-  function writeStorage(key, value) {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-      return true;
-    } catch (error) {
-      console.warn("Local storage unavailable:", error);
-      notify("Could not save data in this browser.", "warning");
-      return false;
-    }
-  }
-
-  const defaultSettings = {
-    theme: "dark",
-    autoRotate: true,
-    rotationSpeed: 0.5,
-    cameraFacing: "environment",
-    cameraWidth: 1280,
-    cameraHeight: 720,
-    scanSound: false,
-    autosave: true,
-    showGrid: true,
-    showSkeleton: false,
-    hydrationGoal: 8
-  };
-
-  let settings = {
-    ...defaultSettings,
-    ...readStorage(STORAGE_KEYS.settings, {})
-  };
-
-  let captures = readStorage(STORAGE_KEYS.captures, []);
-  let wellnessEntries = readStorage(STORAGE_KEYS.wellness, []);
-  let hydrationEntries = readStorage(STORAGE_KEYS.hydration, []);
-  let moodEntries = readStorage(STORAGE_KEYS.mood, []);
-  let sleepEntries = readStorage(STORAGE_KEYS.sleep, []);
-
-  if (!Array.isArray(captures)) captures = [];
-  if (!Array.isArray(wellnessEntries)) wellnessEntries = [];
-  if (!Array.isArray(hydrationEntries)) hydrationEntries = [];
-  if (!Array.isArray(moodEntries)) moodEntries = [];
-  if (!Array.isArray(sleepEntries)) sleepEntries = [];
-
-  function saveSettings() {
-    writeStorage(STORAGE_KEYS.settings, settings);
-  }
-
-  /* -------------------- NOTIFICATIONS -------------------- */
-
-  let notificationTimer = null;
-
-  function notify(message, type = "info") {
-    let container =
-      byId("naol-toast-container") ||
-      $(".toast-container") ||
-      $("[data-toast-container]");
-
-    if (!container) {
-      container = document.createElement("div");
-      container.id = "naol-toast-container";
-
-      Object.assign(container.style, {
-        position: "fixed",
-        top: "16px",
-        right: "16px",
-        zIndex: "99999",
-        display: "flex",
-        flexDirection: "column",
-        gap: "8px",
-        maxWidth: "min(360px, calc(100vw - 32px))",
-        pointerEvents: "none"
-      });
-
-      document.body.appendChild(container);
-    }
-
-    const toast = document.createElement("div");
-    toast.setAttribute("role", "status");
-    toast.textContent = message;
-
-    const background =
-      type === "error"
-        ? "#7f1d1d"
-        : type === "success"
-        ? "#065f46"
-        : type === "warning"
-        ? "#854d0e"
-        : "#172554";
-
-    Object.assign(toast.style, {
-      color: "#ffffff",
-      background,
-      padding: "12px 16px",
-      borderRadius: "12px",
-      boxShadow: "0 8px 24px rgba(0,0,0,.28)",
-      fontSize: "14px",
-      lineHeight: "1.45",
-      overflowWrap: "anywhere",
-      opacity: "0",
-      transform: "translateY(-8px)",
-      transition: "opacity .2s ease, transform .2s ease",
-      pointerEvents: "auto"
-    });
-
-    container.appendChild(toast);
-
-    requestAnimationFrame(() => {
-      toast.style.opacity = "1";
-      toast.style.transform = "translateY(0)";
-    });
-
-    window.setTimeout(() => {
-      toast.style.opacity = "0";
-      toast.style.transform = "translateY(-8px)";
-
-      window.setTimeout(() => toast.remove(), 250);
-    }, 3500);
-  }
-
-  /* -------------------- CLOCK AND DASHBOARD -------------------- */
-
-  function updateClock() {
-    const now = new Date();
-
-    const clockTargets = [
-      "liveClock",
-      "currentTime",
-      "dashboardClock",
-      "clock",
-      "timeDisplay"
-    ];
-
-    clockTargets.forEach((id) => {
-      const element = byId(id);
-      if (element) element.textContent = formatTime(now);
-    });
-
-    const dateTargets = [
-      "currentDate",
-      "dashboardDate",
-      "todayDate",
-      "dateDisplay"
-    ];
-
-    dateTargets.forEach((id) => {
-      const element = byId(id);
-      if (element) element.textContent = formatDate(now);
-    });
-  }
-
-  updateClock();
-  window.setInterval(updateClock, 1000);
-
-  function updateDashboard() {
-    const today = new Date().toDateString();
-
-    const todayWellness = wellnessEntries.filter((entry) => {
-      const date = new Date(entry.createdAt);
-      return !Number.isNaN(date.getTime()) &&
-        date.toDateString() === today;
-    });
-
-    const todayCaptures = captures.filter((capture) => {
-      const date = new Date(capture.createdAt);
-      return !Number.isNaN(date.getTime()) &&
-        date.toDateString() === today;
-    });
-
-    const counters = {
-      totalCaptures: captures.length,
-      todayCaptures: todayCaptures.length,
-      totalWellness: wellnessEntries.length,
-      todayWellness: todayWellness.length,
-      waterToday: getWaterToday(),
-      hydrationGoal: Number(settings.hydrationGoal) || 8
-    };
-
-    const idValues = {
-      totalCaptures: counters.totalCaptures,
-      totalScans: counters.totalCaptures,
-      todayCaptures: counters.todayCaptures,
-      todayScans: counters.todayCaptures,
-      wellnessChecks: counters.totalWellness,
-      totalWellness: counters.totalWellness,
-      waterToday: counters.waterToday,
-      waterCount: counters.waterToday,
-      hydrationGoal: counters.hydrationGoal
-    };
-
-    Object.entries(idValues).forEach(([id, value]) => {
-      const element = byId(id);
-      if (element) element.textContent = String(value);
-    });
-
-    const progress = byId("hydrationProgress");
-
-    if (progress) {
-      const percentage = clamp(
-        (counters.waterToday / Math.max(1, counters.hydrationGoal)) * 100,
-        0,
-        100
-      );
-
-      progress.style.width = `${percentage}%`;
-      progress.setAttribute("aria-valuenow", String(percentage));
-    }
-
-    renderCaptureGallery();
-  }
-
-  /* -------------------- NAVIGATION -------------------- */
-
-  function showSection(sectionName) {
-    if (!sectionName) return;
-
-    const normalized = String(sectionName)
-      .replace(/^#/, "")
-      .replace(/^(section-|page-)/, "");
-
-    const sections = $$(
-      "main section[id], [data-page], .page-section, .app-section"
-    );
-
-    let matched = false;
-
-    sections.forEach((section) => {
-      const sectionId = section.id || "";
-      const dataPage = section.getAttribute("data-page") || "";
-
-      const active =
-        sectionId === normalized ||
-        sectionId === `section-${normalized}` ||
-        sectionId === `page-${normalized}` ||
-        dataPage === normalized;
-
-      if (active) matched = true;
-
-      if (
-        section.matches("[data-page]") ||
-        section.matches(".page-section") ||
-        section.matches(".app-section")
-      ) {
-        section.hidden = !active;
-      } else if (sectionId.startsWith("section-") ||
-                 sectionId.startsWith("page-")) {
-        section.hidden = !active;
-      }
-    });
-
-    $$("[data-section], [data-page-link], .nav-link, .sidebar-link")
-      .forEach((button) => {
-        const target =
-          button.dataset.section ||
-          button.dataset.pageLink ||
-          button.getAttribute("href")?.replace(/^#/, "");
-
-        const active =
-          target === normalized ||
-          target === `section-${normalized}` ||
-          target === `page-${normalized}`;
-
-        button.classList.toggle("active", active);
-
-        if (active) button.setAttribute("aria-current", "page");
-        else button.removeAttribute("aria-current");
-      });
-
-    const mobileMenu = byId("mobileMenu") || byId("sidebar");
-
-    if (mobileMenu) {
-      mobileMenu.classList.remove("open");
-      mobileMenu.classList.remove("active");
-    }
-
-    if (matched) {
-      const target = byId(normalized) ||
-        byId(`section-${normalized}`) ||
-        byId(`page-${normalized}`);
-
-      if (target && window.matchMedia("(max-width: 768px)").matches) {
-        target.scrollIntoView({ behavior: "smooth", block: "start" });
-      }
-    }
-  }
-
-  /* -------------------- CAMERA SYSTEM -------------------- */
-
-  let cameraStream = null;
-  let cameraFacing = settings.cameraFacing || "environment";
-  let cameraActive = false;
-  let cameraStarting = false;
-  let cameraAnimationFrame = null;
-  let lastCapturedDataUrl = null;
-
-  const video =
-    byId("cameraVideo") ||
-    byId("camera") ||
-    byId("videoElement") ||
-    $("video[data-camera]");
-
-  const cameraCanvas =
-    byId("cameraCanvas") ||
-    byId("captureCanvas") ||
-    document.createElement("canvas");
-
-  const cameraContext = cameraCanvas.getContext("2d", {
-    alpha: false
-  });
-
-  function updateCameraStatus(message, state = "idle") {
-    const ids = [
-      "cameraStatus",
-      "cameraMessage",
-      "scanStatus",
-      "cameraState"
-    ];
-
-    ids.forEach((id) => {
-      const element = byId(id);
-      if (element) {
-        element.textContent = message;
-        element.dataset.state = state;
-      }
-    });
-
-    $$("[data-camera-status]").forEach((element) => {
-      element.textContent = message;
-      element.dataset.state = state;
-    });
-  }
-
-  function updateCameraButtons() {
-    const startButtons = [
-      "startCamera",
-      "startCameraBtn",
-      "openCamera",
-      "cameraStart"
-    ];
-
-    const stopButtons = [
-      "stopCamera",
-      "stopCameraBtn",
-      "cameraStop"
-    ];
-
-    startButtons.forEach((id) => {
-      const element = byId(id);
-      if (element) element.disabled = cameraActive || cameraStarting;
-    });
-
-    stopButtons.forEach((id) => {
-      const element = byId(id);
-      if (element) element.disabled = !cameraActive;
-    });
-  }
-
-  async function startCamera() {
-    if (cameraStarting) return;
-
-    if (!navigator.mediaDevices ||
-        typeof navigator.mediaDevices.getUserMedia !== "function") {
-      notify(
-        "Camera is not available. Open this website using HTTPS and a supported browser.",
-        "error"
-      );
-
-      updateCameraStatus("Camera unavailable — HTTPS may be required.", "error");
-      return;
-    }
-
-    if (!video) {
-      notify(
-        "Camera video element not found. Check index.html for the camera video element.",
-        "error"
-      );
-      return;
-    }
-
-    cameraStarting = true;
-    updateCameraButtons();
-    updateCameraStatus("Requesting camera permission…", "loading");
-
-    try {
-      stopCamera(false);
-
-      const constraints = {
-        audio: false,
-        video: {
-          facingMode: { ideal: cameraFacing },
-          width: { ideal: settings.cameraWidth || 1280 },
-          height: { ideal: settings.cameraHeight || 720 }
+    function safeJSONParse(value, fallback) {
+        try {
+            return value ? JSON.parse(value) : fallback;
+        } catch (error) {
+            console.warn("Could not read saved data:", error);
+            return fallback;
         }
-      };
-
-      cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
-
-      video.srcObject = cameraStream;
-      video.muted = true;
-      video.playsInline = true;
-      video.autoplay = true;
-
-      await video.play();
-
-      cameraActive = true;
-      cameraStarting = false;
-
-      updateCameraStatus("Camera is active", "active");
-      updateCameraButtons();
-      drawCameraPreview();
-      notify("Camera started successfully.", "success");
-    } catch (error) {
-      cameraStarting = false;
-      cameraActive = false;
-      cameraStream = null;
-
-      updateCameraButtons();
-
-      let message = "Unable to start the camera.";
-
-      if (error?.name === "NotAllowedError" ||
-          error?.name === "PermissionDeniedError") {
-        message =
-          "Camera permission was denied. Allow camera access in your browser settings.";
-      } else if (error?.name === "NotFoundError") {
-        message = "No camera was found on this device.";
-      } else if (error?.name === "NotReadableError") {
-        message = "The camera may already be in use by another application.";
-      } else if (error?.name === "OverconstrainedError") {
-        message = "Requested camera settings are unavailable. Try another camera.";
-      } else if (error?.name === "SecurityError") {
-        message = "Camera access requires a secure HTTPS website.";
-      }
-
-      updateCameraStatus(message, "error");
-      notify(message, "error");
-      console.error("Camera start failed:", error);
-    }
-  }
-
-  function stopCamera(showNotification = true) {
-    if (cameraAnimationFrame !== null) {
-      cancelAnimationFrame(cameraAnimationFrame);
-      cameraAnimationFrame = null;
     }
 
-    if (cameraStream) {
-      cameraStream.getTracks().forEach((track) => track.stop());
-      cameraStream = null;
-    }
-
-    if (video) {
-      try {
-        video.pause();
-        video.srcObject = null;
-      } catch (error) {
-        console.warn("Could not reset camera video:", error);
-      }
-    }
-
-    cameraActive = false;
-
-    if (!cameraStarting) {
-      updateCameraStatus("Camera stopped", "idle");
-    }
-
-    updateCameraButtons();
-
-    if (showNotification) {
-      notify("Camera stopped.");
-    }
-  }
-
-  function drawCameraPreview() {
-    if (!cameraActive || !video || video.readyState < 2) return;
-
-    if (cameraCanvas.width !== video.videoWidth ||
-        cameraCanvas.height !== video.videoHeight) {
-      cameraCanvas.width = video.videoWidth || 640;
-      cameraCanvas.height = video.videoHeight || 480;
-    }
-
-    try {
-      cameraContext.drawImage(
-        video,
-        0,
-        0,
-        cameraCanvas.width,
-        cameraCanvas.height
-      );
-    } catch (error) {
-      console.warn("Camera preview frame error:", error);
-    }
-
-    cameraAnimationFrame = requestAnimationFrame(drawCameraPreview);
-  }
-
-  async function switchCamera() {
-    cameraFacing =
-      cameraFacing === "environment" ? "user" : "environment";
-
-    settings.cameraFacing = cameraFacing;
-    saveSettings();
-
-    if (cameraActive) {
-      await startCamera();
-    } else {
-      notify(
-        `Next camera: ${cameraFacing === "user" ? "front" : "rear"}.`
-      );
-    }
-  }
-
-  function getCurrentCameraFrame() {
-    if (video && cameraActive &&
-        video.videoWidth > 0 && video.videoHeight > 0) {
-      const canvas = document.createElement("canvas");
-
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-
-      const context = canvas.getContext("2d");
-
-      if (!context) throw new Error("Unable to create image context.");
-
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      return canvas.toDataURL("image/jpeg", 0.92);
-    }
-
-    if (lastCapturedDataUrl) return lastCapturedDataUrl;
-
-    throw new Error("Start the camera before capturing a photo.");
-  }
-
-  function capturePhoto(view = "front") {
-    try {
-      if (!cameraActive) {
-        notify("Start the camera before capturing a photo.", "warning");
-        return null;
-      }
-
-      const imageData = getCurrentCameraFrame();
-      const capture = {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        view,
-        createdAt: timestamp(),
-        dataUrl: imageData
-      };
-
-      lastCapturedDataUrl = imageData;
-
-      if (settings.autosave) {
-        captures.unshift(capture);
-        captures = captures.slice(0, 30);
-        writeStorage(STORAGE_KEYS.captures, captures);
-      }
-
-      updateDashboard();
-      renderCaptureGallery();
-
-      const imagePreview =
-        byId("capturedImage") ||
-        byId("capturePreview") ||
-        $("img[data-capture-preview]");
-
-      if (imagePreview) {
-        imagePreview.src = imageData;
-        imagePreview.hidden = false;
-      }
-
-      const captureStatus = byId("captureStatus");
-      if (captureStatus) {
-        captureStatus.textContent = `${view} photo captured at ${formatTime()}`;
-      }
-
-      playScanSound();
-      notify(`${view} photo captured.`, "success");
-
-      return capture;
-    } catch (error) {
-      notify(error.message || "Unable to capture photo.", "error");
-      return null;
-    }
-  }
-
-  function deleteCapture(id) {
-    captures = captures.filter((capture) => capture.id !== id);
-    writeStorage(STORAGE_KEYS.captures, captures);
-    updateDashboard();
-    notify("Photo deleted.");
-  }
-
-  function downloadDataUrl(dataUrl, filename) {
-    const link = document.createElement("a");
-    link.href = dataUrl;
-    link.download = filename;
-    link.rel = "noopener";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-  }
-
-  function downloadCapture(id) {
-    const capture = captures.find((item) => item.id === id);
-
-    if (!capture) {
-      notify("Photo not found.", "error");
-      return;
-    }
-
-    downloadDataUrl(
-      capture.dataUrl,
-      `naol-health-${capture.view}-${capture.id}.jpg`
-    );
-  }
-
-  function renderCaptureGallery() {
-    const gallery =
-      byId("captureGallery") ||
-      byId("photoGallery") ||
-      $("[data-capture-gallery]");
-
-    if (!gallery) return;
-
-    gallery.replaceChildren();
-
-    if (captures.length === 0) {
-      const empty = document.createElement("p");
-      empty.textContent = "No saved photos yet.";
-      gallery.appendChild(empty);
-      return;
-    }
-
-    captures.forEach((capture) => {
-      const card = document.createElement("article");
-      card.className = "capture-card";
-
-      const image = document.createElement("img");
-      image.src = capture.dataUrl;
-      image.alt = `${capture.view} camera capture`;
-      image.loading = "lazy";
-
-      Object.assign(image.style, {
-        width: "100%",
-        maxWidth: "260px",
-        height: "auto",
-        borderRadius: "12px",
-        objectFit: "cover"
-      });
-
-      const title = document.createElement("p");
-      title.textContent =
-        `${capture.view.toUpperCase()} • ${formatDate(new Date(capture.createdAt))}`;
-
-      const downloadButton = document.createElement("button");
-      downloadButton.type = "button";
-      downloadButton.textContent = "Download photo";
-      downloadButton.addEventListener("click", () => downloadCapture(capture.id));
-
-      const deleteButton = document.createElement("button");
-      deleteButton.type = "button";
-      deleteButton.textContent = "Delete photo";
-      deleteButton.addEventListener("click", () => deleteCapture(capture.id));
-
-      card.append(image, title, downloadButton, deleteButton);
-      gallery.appendChild(card);
-    });
-  }
-
-  function downloadAllCaptures() {
-    if (captures.length === 0) {
-      notify("There are no saved photos to download.", "warning");
-      return;
-    }
-
-    captures.forEach((capture, index) => {
-      window.setTimeout(() => {
-        downloadDataUrl(
-          capture.dataUrl,
-          `naol-health-${capture.view}-${index + 1}.jpg`
-        );
-      }, index * 250);
-    });
-  }
-
-  /* -------------------- SCAN SESSION -------------------- */
-
-  const scanViews = ["front", "left", "right", "back"];
-
-  let currentScanIndex = 0;
-  let scanSessionActive = false;
-  let scanSession = [];
-
-  function updateScanProgress() {
-    const progress = byId("scanProgress");
-    const label = byId("scanProgressLabel");
-
-    const completed = scanSession.length;
-    const percentage = (completed / scanViews.length) * 100;
-
-    if (progress) {
-      progress.style.width = `${percentage}%`;
-      progress.setAttribute("aria-valuenow", String(percentage));
-    }
-
-    if (label) {
-      label.textContent = `${completed}/${scanViews.length} views captured`;
-    }
-
-    const current = byId("currentScanView");
-
-    if (current) {
-      current.textContent =
-        completed >= scanViews.length
-          ? "Capture session complete"
-          : `Next view: ${scanViews[currentScanIndex]}`;
-    }
-  }
-
-  function startScanSession() {
-    scanSession = [];
-    currentScanIndex = 0;
-    scanSessionActive = true;
-    updateScanProgress();
-    notify("Capture session started. Capture the four requested views.");
-  }
-
-  function captureNextView() {
-    if (!scanSessionActive) startScanSession();
-
-    if (currentScanIndex >= scanViews.length) {
-      notify("All four views have already been captured.", "warning");
-      return;
-    }
-
-    const view = scanViews[currentScanIndex];
-    const capture = capturePhoto(view);
-
-    if (!capture) return;
-
-    scanSession.push(capture.id);
-    currentScanIndex += 1;
-
-    updateScanProgress();
-
-    if (currentScanIndex >= scanViews.length) {
-      scanSessionActive = false;
-
-      const note = byId("scanSessionNote");
-
-      if (note) {
-        note.textContent =
-          "Four reference photos saved. These photos do not automatically create a true 3D body scan.";
-      }
-
-      notify(
-        "Four views captured. This is a photo collection, not a medical 3D scan.",
-        "success"
-      );
-    }
-  }
-
-  /* -------------------- SCAN SOUND -------------------- */
-
-  function playScanSound() {
-    if (!settings.scanSound) return;
-
-    try {
-      const AudioContextClass =
-        window.AudioContext || window.webkitAudioContext;
-
-      if (!AudioContextClass) return;
-
-      const context = new AudioContextClass();
-      const oscillator = context.createOscillator();
-      const gain = context.createGain();
-
-      oscillator.type = "sine";
-      oscillator.frequency.setValueAtTime(720, context.currentTime);
-
-      gain.gain.setValueAtTime(0.05, context.currentTime);
-      gain.gain.exponentialRampToValueAtTime(
-        0.001,
-        context.currentTime + 0.12
-      );
-
-      oscillator.connect(gain);
-      gain.connect(context.destination);
-
-      oscillator.start();
-      oscillator.stop(context.currentTime + 0.12);
-
-      oscillator.onended = () => context.close();
-    } catch (error) {
-      console.warn("Audio unavailable:", error);
-    }
-  }
-
-  /* -------------------- THREE.JS 3D VIEWER -------------------- */
-
-  let THREE = null;
-  let OrbitControlsClass = null;
-
-  let threeScene = null;
-  let threeCamera = null;
-  let threeRenderer = null;
-  let orbitControls = null;
-  let bodyGroup = null;
-  let skeletonGroup = null;
-  let gridHelper = null;
-  let animationFrame3D = null;
-  let threeReady = false;
-
-  const threeContainer =
-    byId("body3DViewer") ||
-    byId("threeContainer") ||
-    byId("bodyViewer") ||
-    $("[data-3d-viewer]");
-
-  function makeMaterial(color, roughness = 0.45, metalness = 0.15) {
-    return new THREE.MeshStandardMaterial({
-      color,
-      roughness,
-      metalness
-    });
-  }
-
-  function addEllipsoid(parent, position, scale, material, segments = 32) {
-    const geometry = new THREE.SphereGeometry(1, segments, segments);
-    const mesh = new THREE.Mesh(geometry, material);
-
-    mesh.position.set(position[0], position[1], position[2]);
-    mesh.scale.set(scale[0], scale[1], scale[2]);
-
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-
-    parent.add(mesh);
-
-    return mesh;
-  }
-
-  function addCapsuleLikeLimb(parent, start, end, radius, material) {
-    const a = new THREE.Vector3(...start);
-    const b = new THREE.Vector3(...end);
-
-    const direction = new THREE.Vector3().subVectors(b, a);
-    const length = direction.length();
-
-    const geometry = new THREE.CylinderGeometry(
-      radius * 0.85,
-      radius,
-      length,
-      16,
-      1
-    );
-
-    const mesh = new THREE.Mesh(geometry, material);
-
-    mesh.position.copy(a).add(b).multiplyScalar(0.5);
-    mesh.quaternion.setFromUnitVectors(
-      new THREE.Vector3(0, 1, 0),
-      direction.normalize()
-    );
-
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-
-    parent.add(mesh);
-
-    addEllipsoid(
-      parent,
-      [a.x, a.y, a.z],
-      [radius, radius, radius],
-      material,
-      16
-    );
-
-    addEllipsoid(
-      parent,
-      [b.x, b.y, b.z],
-      [radius, radius, radius],
-      material,
-      16
-    );
-
-    return mesh;
-  }
-
-  function createIllustrativeBody() {
-    if (!THREE || !bodyGroup) return;
-
-    while (bodyGroup.children.length > 0) {
-      const child = bodyGroup.children[0];
-      bodyGroup.remove(child);
-
-      child.traverse?.((object) => {
-        object.geometry?.dispose?.();
-
-        if (Array.isArray(object.material)) {
-          object.material.forEach((material) => material.dispose?.());
-        } else {
-          object.material?.dispose?.();
+    function readStorage(key, fallback) {
+        try {
+            const value = localStorage.getItem(key);
+            return value === null ? fallback : safeJSONParse(value, fallback);
+        } catch (error) {
+            console.warn("Local storage is unavailable:", error);
+            return fallback;
         }
-      });
     }
 
-    const skin = makeMaterial(0x35b6c9, 0.48, 0.18);
-    const darkerSkin = makeMaterial(0x167f99, 0.5, 0.12);
-    const jointMaterial = makeMaterial(0x5bd7e6, 0.38, 0.22);
-    const clothing = makeMaterial(0x223d63, 0.55, 0.15);
-
-    // Head and neck.
-    addEllipsoid(bodyGroup, [0, 3.0, 0], [0.34, 0.43, 0.31], skin);
-    addEllipsoid(bodyGroup, [0, 2.49, 0], [0.14, 0.25, 0.14], darkerSkin);
-
-    // Torso.
-    addEllipsoid(bodyGroup, [0, 1.91, 0], [0.64, 0.72, 0.31], clothing);
-    addEllipsoid(bodyGroup, [0, 1.35, 0], [0.42, 0.37, 0.28], skin);
-
-    // Shoulders.
-    addEllipsoid(bodyGroup, [-0.62, 2.25, 0], [0.27, 0.26, 0.27], skin);
-    addEllipsoid(bodyGroup, [0.62, 2.25, 0], [0.27, 0.26, 0.27], skin);
-
-    // Arms.
-    addCapsuleLikeLimb(
-      bodyGroup,
-      [-0.68, 2.19, 0],
-      [-0.83, 1.55, 0],
-      0.14,
-      skin
-    );
-
-    addCapsuleLikeLimb(
-      bodyGroup,
-      [-0.83, 1.55, 0],
-      [-0.86, 0.95, 0],
-      0.11,
-      darkerSkin
-    );
-
-    addEllipsoid(bodyGroup, [-0.86, 0.82, 0], [0.13, 0.18, 0.12], skin);
-
-    addCapsuleLikeLimb(
-      bodyGroup,
-      [0.68, 2.19, 0],
-      [0.83, 1.55, 0],
-      0.14,
-      skin
-    );
-
-    addCapsuleLikeLimb(
-      bodyGroup,
-      [0.83, 1.55, 0],
-      [0.86, 0.95, 0],
-      0.11,
-      darkerSkin
-    );
-
-    addEllipsoid(bodyGroup, [0.86, 0.82, 0], [0.13, 0.18, 0.12], skin);
-
-    // Legs.
-    addCapsuleLikeLimb(
-      bodyGroup,
-      [-0.25, 1.11, 0],
-      [-0.28, 0.28, 0],
-      0.19,
-      skin
-    );
-
-    addCapsuleLikeLimb(
-      bodyGroup,
-      [-0.28, 0.28, 0],
-      [-0.28, -0.48, 0],
-      0.13,
-      darkerSkin
-    );
-
-    addEllipsoid(bodyGroup, [-0.28, -0.57, 0.08], [0.17, 0.11, 0.29], clothing);
-
-    addCapsuleLikeLimb(
-      bodyGroup,
-      [0.25, 1.11, 0],
-      [0.28, 0.28, 0],
-      0.19,
-      skin
-    );
-
-    addCapsuleLikeLimb(
-      bodyGroup,
-      [0.28, 0.28, 0],
-      [0.28, -0.48, 0],
-      0.13,
-      darkerSkin
-    );
-
-    addEllipsoid(bodyGroup, [0.28, -0.57, 0.08], [0.17, 0.11, 0.29], clothing);
-
-    // Neck, chest, and abdomen reference lines.
-    const lineMaterial = new THREE.MeshBasicMaterial({
-      color: 0x4be9ff,
-      transparent: true,
-      opacity: 0.45
-    });
-
-    const chestLineGeometry = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(-0.43, 2.0, 0.31),
-      new THREE.Vector3(0.43, 2.0, 0.31)
-    ]);
-
-    const chestLine = new THREE.Line(chestLineGeometry, lineMaterial);
-    bodyGroup.add(chestLine);
-
-    const abdomenLineGeometry = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(-0.3, 1.47, 0.28),
-      new THREE.Vector3(0.3, 1.47, 0.28)
-    ]);
-
-    bodyGroup.add(new THREE.Line(abdomenLineGeometry, lineMaterial));
-
-    bodyGroup.position.y = 0.25;
-  }
-
-  function createIllustrativeSkeleton() {
-    if (!THREE || !skeletonGroup) return;
-
-    while (skeletonGroup.children.length > 0) {
-      const child = skeletonGroup.children[0];
-      skeletonGroup.remove(child);
-
-      child.traverse?.((object) => {
-        object.geometry?.dispose?.();
-        object.material?.dispose?.();
-      });
-    }
-
-    const boneMaterial = new THREE.MeshStandardMaterial({
-      color: 0xe0e7ef,
-      roughness: 0.6,
-      transparent: true,
-      opacity: 0.8
-    });
-
-    addEllipsoid(
-      skeletonGroup,
-      [0, 3.0, 0.03],
-      [0.23, 0.3, 0.2],
-      boneMaterial,
-      24
-    );
-
-    addCapsuleLikeLimb(
-      skeletonGroup,
-      [0, 2.65, 0],
-      [0, 1.1, 0],
-      0.07,
-      boneMaterial
-    );
-
-    addCapsuleLikeLimb(
-      skeletonGroup,
-      [-0.42, 2.24, 0],
-      [0.42, 2.24, 0],
-      0.045,
-      boneMaterial
-    );
-
-    addCapsuleLikeLimb(
-      skeletonGroup,
-      [-0.48, 2.2, 0],
-      [-0.85, 1.55, 0],
-      0.045,
-      boneMaterial
-    );
-
-    addCapsuleLikeLimb(
-      skeletonGroup,
-      [-0.85, 1.55, 0],
-      [-0.86, 0.95, 0],
-      0.035,
-      boneMaterial
-    );
-
-    addCapsuleLikeLimb(
-      skeletonGroup,
-      [0.48, 2.2, 0],
-      [0.85, 1.55, 0],
-      0.045,
-      boneMaterial
-    );
-
-    addCapsuleLikeLimb(
-      skeletonGroup,
-      [0.85, 1.55, 0],
-      [0.86, 0.95, 0],
-      0.035,
-      boneMaterial
-    );
-
-    addCapsuleLikeLimb(
-      skeletonGroup,
-      [-0.22, 1.05, 0],
-      [-0.28, 0.25, 0],
-      0.06,
-      boneMaterial
-    );
-
-    addCapsuleLikeLimb(
-      skeletonGroup,
-      [-0.28, 0.25, 0],
-      [-0.28, -0.48, 0],
-      0.045,
-      boneMaterial
-    );
-
-    addCapsuleLikeLimb(
-      skeletonGroup,
-      [0.22, 1.05, 0],
-      [0.28, 0.25, 0],
-      0.06,
-      boneMaterial
-    );
-
-    addCapsuleLikeLimb(
-      skeletonGroup,
-      [0.28, 0.25, 0],
-      [0.28, -0.48, 0],
-      0.045,
-      boneMaterial
-    );
-
-    skeletonGroup.position.y = 0.25;
-    skeletonGroup.visible = Boolean(settings.showSkeleton);
-  }
-
-  async function init3DViewer() {
-    if (!threeContainer) {
-      console.info(
-        "3D viewer container not found. Add an element with id='body3DViewer' to enable the viewer."
-      );
-      return;
-    }
-
-    try {
-      THREE = await import(
-        "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
-      );
-
-      const controlsModule = await import(
-        "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js"
-      );
-
-      OrbitControlsClass = controlsModule.OrbitControls;
-
-      threeScene = new THREE.Scene();
-      threeScene.background = new THREE.Color(0x07111f);
-
-      threeCamera = new THREE.PerspectiveCamera(
-        42,
-        Math.max(1, threeContainer.clientWidth) /
-          Math.max(1, threeContainer.clientHeight),
-        0.1,
-        100
-      );
-
-      threeCamera.position.set(4.2, 2.8, 6.5);
-
-      threeRenderer = new THREE.WebGLRenderer({
-        antialias: true,
-        alpha: false,
-        powerPreference: "low-power"
-      });
-
-      threeRenderer.setPixelRatio(
-        Math.min(window.devicePixelRatio || 1, 1.75)
-      );
-
-      threeRenderer.setSize(
-        Math.max(1, threeContainer.clientWidth),
-        Math.max(1, threeContainer.clientHeight)
-      );
-
-      threeRenderer.shadowMap.enabled = true;
-      threeRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
-      threeRenderer.outputColorSpace = THREE.SRGBColorSpace;
-
-      threeContainer.replaceChildren(threeRenderer.domElement);
-
-      threeRenderer.domElement.style.display = "block";
-      threeRenderer.domElement.style.width = "100%";
-      threeRenderer.domElement.style.height = "100%";
-      threeRenderer.domElement.style.minHeight = "320px";
-
-      const ambientLight = new THREE.AmbientLight(0x8abbd7, 1.8);
-      threeScene.add(ambientLight);
-
-      const keyLight = new THREE.DirectionalLight(0xffffff, 3.0);
-      keyLight.position.set(4, 7, 5);
-      keyLight.castShadow = true;
-      threeScene.add(keyLight);
-
-      const rimLight = new THREE.PointLight(0x18c9f4, 35, 20);
-      rimLight.position.set(-4, 3, -3);
-      threeScene.add(rimLight);
-
-      gridHelper = new THREE.GridHelper(12, 24, 0x147b9a, 0x123149);
-      gridHelper.position.y = -0.42;
-      gridHelper.visible = Boolean(settings.showGrid);
-      threeScene.add(gridHelper);
-
-      bodyGroup = new THREE.Group();
-      threeScene.add(bodyGroup);
-
-      skeletonGroup = new THREE.Group();
-      threeScene.add(skeletonGroup);
-
-      createIllustrativeBody();
-      createIllustrativeSkeleton();
-
-      orbitControls = new OrbitControlsClass(
-        threeCamera,
-        threeRenderer.domElement
-      );
-
-      orbitControls.enableDamping = true;
-      orbitControls.dampingFactor = 0.06;
-      orbitControls.minDistance = 3.5;
-      orbitControls.maxDistance = 14;
-      orbitControls.target.set(0, 1.35, 0);
-      orbitControls.autoRotate = Boolean(settings.autoRotate);
-      orbitControls.autoRotateSpeed = Number(settings.rotationSpeed) || 0.5;
-
-      threeReady = true;
-
-      update3DStatus("3D viewer ready");
-
-      animate3D();
-      window.addEventListener("resize", resize3DViewer);
-
-      notify("3D viewer loaded.", "success");
-    } catch (error) {
-      console.warn("Three.js viewer could not be loaded:", error);
-
-      update3DStatus(
-        "3D viewer unavailable. Check your internet connection and try again."
-      );
-    }
-  }
-
-  function update3DStatus(message) {
-    [
-      "viewerStatus",
-      "bodyViewerStatus",
-      "threeStatus",
-      "modelStatus"
-    ].forEach((id) => {
-      const element = byId(id);
-      if (element) element.textContent = message;
-    });
-  }
-
-  function animate3D() {
-    if (!threeReady || !threeRenderer || !threeScene || !threeCamera) return;
-
-    animationFrame3D = requestAnimationFrame(animate3D);
-
-    if (orbitControls) orbitControls.update();
-
-    threeRenderer.render(threeScene, threeCamera);
-  }
-
-  function resize3DViewer() {
-    if (!threeReady || !threeContainer || !threeRenderer || !threeCamera) return;
-
-    const width = Math.max(1, threeContainer.clientWidth);
-    const height = Math.max(1, threeContainer.clientHeight);
-
-    threeCamera.aspect = width / height;
-    threeCamera.updateProjectionMatrix();
-
-    threeRenderer.setSize(width, height);
-  }
-
-  function set3DView(view) {
-    if (!threeReady || !threeCamera || !orbitControls) {
-      notify("The 3D viewer is not ready yet.", "warning");
-      return;
-    }
-
-    const positions = {
-      front: [0, 2.0, 6.5],
-      back: [0, 2.0, -6.5],
-      left: [-6.5, 2.0, 0],
-      right: [6.5, 2.0, 0],
-      top: [0, 8.0, 0.01]
-    };
-
-    const position = positions[String(view).toLowerCase()];
-
-    if (!position) {
-      notify("Unknown 3D view.", "warning");
-      return;
-    }
-
-    threeCamera.position.set(...position);
-    orbitControls.target.set(0, 1.35, 0);
-
-    if (String(view).toLowerCase() === "back") {
-      threeCamera.lookAt(0, 1.35, 0);
-    }
-
-    orbitControls.update();
-
-    notify(`${view} view selected.`);
-  }
-
-  function reset3DViewer() {
-    if (!threeReady || !threeCamera || !orbitControls) {
-      notify("The 3D viewer is not ready yet.", "warning");
-      return;
-    }
-
-    threeCamera.position.set(4.2, 2.8, 6.5);
-    orbitControls.target.set(0, 1.35, 0);
-    orbitControls.autoRotate = Boolean(settings.autoRotate);
-    orbitControls.update();
-
-    notify("3D view reset.", "success");
-  }
-
-  function toggleAutoRotate() {
-    settings.autoRotate = !settings.autoRotate;
-    saveSettings();
-
-    if (orbitControls) {
-      orbitControls.autoRotate = settings.autoRotate;
-    }
-
-    notify(
-      `Auto-rotate ${settings.autoRotate ? "enabled" : "disabled"}.`
-    );
-  }
-
-  function toggleSkeleton() {
-    settings.showSkeleton = !settings.showSkeleton;
-    saveSettings();
-
-    if (skeletonGroup) {
-      skeletonGroup.visible = settings.showSkeleton;
-    }
-
-    notify(
-      `Illustrative skeleton overlay ${
-        settings.showSkeleton ? "enabled" : "disabled"
-      }.`
-    );
-  }
-
-  function toggleGrid() {
-    settings.showGrid = !settings.showGrid;
-    saveSettings();
-
-    if (gridHelper) {
-      gridHelper.visible = settings.showGrid;
-    }
-
-    notify(`3D grid ${settings.showGrid ? "enabled" : "disabled"}.`);
-  }
-
-  /* -------------------- WELLNESS SELF-CHECK -------------------- */
-
-  const wellnessQuestions = [
-    {
-      id: "energy",
-      title: "How would you describe your energy today?",
-      options: [
-        { label: "Very low", score: 0 },
-        { label: "Low", score: 1 },
-        { label: "Moderate", score: 2 },
-        { label: "Good", score: 3 },
-        { label: "Excellent", score: 4 }
-      ]
-    },
-    {
-      id: "sleep",
-      title: "How was your sleep last night?",
-      options: [
-        { label: "Very poor", score: 0 },
-        { label: "Poor", score: 1 },
-        { label: "Fair", score: 2 },
-        { label: "Good", score: 3 },
-        { label: "Very good", score: 4 }
-      ]
-    },
-    {
-      id: "stress",
-      title: "How manageable does your stress feel today?",
-      options: [
-        { label: "Not manageable", score: 0 },
-        { label: "Difficult", score: 1 },
-        { label: "Somewhat manageable", score: 2 },
-        { label: "Mostly manageable", score: 3 },
-        { label: "Very manageable", score: 4 }
-      ]
-    },
-    {
-      id: "movement",
-      title: "Have you had some movement or exercise today?",
-      options: [
-        { label: "Not yet", score: 0 },
-        { label: "A little", score: 1 },
-        { label: "Some", score: 2 },
-        { label: "A good amount", score: 3 },
-        { label: "Plenty", score: 4 }
-      ]
-    },
-    {
-      id: "hydration",
-      title: "How well have you stayed hydrated today?",
-      options: [
-        { label: "Very poorly", score: 0 },
-        { label: "Poorly", score: 1 },
-        { label: "Fairly", score: 2 },
-        { label: "Well", score: 3 },
-        { label: "Very well", score: 4 }
-      ]
-    }
-  ];
-
-  function getQuestionnaireContainer() {
-    return (
-      byId("wellnessQuestions") ||
-      byId("selfCheckQuestions") ||
-      $("[data-wellness-questions]")
-    );
-  }
-
-  function renderWellnessQuestions() {
-    const container = getQuestionnaireContainer();
-    if (!container) return;
-
-    container.replaceChildren();
-
-    wellnessQuestions.forEach((question, index) => {
-      const fieldset = document.createElement("fieldset");
-      fieldset.className = "wellness-question";
-
-      const legend = document.createElement("legend");
-      legend.textContent = `${index + 1}. ${question.title}`;
-
-      fieldset.appendChild(legend);
-
-      question.options.forEach((option) => {
-        const label = document.createElement("label");
-        label.className = "wellness-option";
-
-        const input = document.createElement("input");
-        input.type = "radio";
-        input.name = question.id;
-        input.value = String(option.score);
-        input.required = true;
-
-        const text = document.createElement("span");
-        text.textContent = option.label;
-
-        label.append(input, text);
-        fieldset.appendChild(label);
-      });
-
-      container.appendChild(fieldset);
-    });
-  }
-
-  function runWellnessCheck() {
-    const answers = {};
-
-    for (const question of wellnessQuestions) {
-      const selected = $(
-        `input[name="${question.id}"]:checked`
-      );
-
-      if (!selected) {
-        notify("Please answer every wellness question.", "warning");
-        return null;
-      }
-
-      answers[question.id] = Number(selected.value);
-    }
-
-    const total = Object.values(answers).reduce(
-      (sum, value) => sum + value,
-      0
-    );
-
-    const maximum = wellnessQuestions.length * 4;
-    const percentage = Math.round((total / maximum) * 100);
-
-    let summary;
-    let recommendation;
-
-    if (percentage >= 80) {
-      summary = "Your self-reported wellness feels positive today.";
-      recommendation =
-        "Keep up helpful routines, rest when needed, and stay hydrated.";
-    } else if (percentage >= 60) {
-      summary = "Your self-reported wellness is mixed but generally steady.";
-      recommendation =
-        "Consider a short walk, regular meals, rest, and a calming break.";
-    } else if (percentage >= 40) {
-      summary = "You reported some areas that may need attention.";
-      recommendation =
-        "Choose one manageable step today and consider talking to someone you trust if concerns persist.";
-    } else {
-      summary = "You reported several challenges with your wellbeing today.";
-      recommendation =
-        "Be kind to yourself. Consider support from someone you trust or a qualified health professional, especially if this continues.";
-    }
-
-    const entry = {
-      id: `${Date.now()}`,
-      createdAt: timestamp(),
-      answers,
-      total,
-      maximum,
-      percentage,
-      summary,
-      recommendation
-    };
-
-    wellnessEntries.unshift(entry);
-    wellnessEntries = wellnessEntries.slice(0, 100);
-
-    writeStorage(STORAGE_KEYS.wellness, wellnessEntries);
-
-    const result = byId("wellnessResult") ||
-      byId("selfCheckResult") ||
-      $("[data-wellness-result]");
-
-    if (result) {
-      result.replaceChildren();
-
-      const heading = document.createElement("h3");
-      heading.textContent = `Your wellness reflection: ${percentage}%`;
-
-      const summaryParagraph = document.createElement("p");
-      summaryParagraph.textContent = summary;
-
-      const recommendationParagraph = document.createElement("p");
-      recommendationParagraph.textContent = recommendation;
-
-      const disclaimer = document.createElement("small");
-      disclaimer.textContent =
-        "This is a non-diagnostic self-reflection questionnaire. It is not a medical test, diagnosis, or substitute for professional care.";
-
-      result.append(
-        heading,
-        summaryParagraph,
-        recommendationParagraph,
-        disclaimer
-      );
-
-      result.hidden = false;
-    }
-
-    updateDashboard();
-    notify("Wellness reflection saved.", "success");
-
-    return entry;
-  }
-
-  /* -------------------- BREATHING TIMER -------------------- */
-
-  let breathingInterval = null;
-  let breathingRemaining = 60;
-  let breathingRunning = false;
-  let breathingPhase = "Ready";
-
-  function updateBreathingDisplay() {
-    const timer = byId("breathingTimer") ||
-      byId("breathTimer") ||
-      $("[data-breathing-timer]");
-
-    const phase = byId("breathingPhase") ||
-      byId("breathPhase") ||
-      $("[data-breathing-phase]");
-
-    const minutes = Math.floor(breathingRemaining / 60);
-    const seconds = breathingRemaining % 60;
-    const text = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-
-    if (timer) timer.textContent = text;
-    if (phase) phase.textContent = breathingPhase;
-  }
-
-  function startBreathingExercise() {
-    if (breathingRunning) return;
-
-    breathingRunning = true;
-    breathingRemaining = 60;
-    breathingPhase = "Breathe in gently";
-
-    let elapsed = 0;
-
-    updateBreathingDisplay();
-
-    breathingInterval = window.setInterval(() => {
-      elapsed += 1;
-      breathingRemaining = Math.max(0, 60 - elapsed);
-
-      const cycle = elapsed % 8;
-
-      if (cycle < 4) {
-        breathingPhase = "Breathe in gently";
-      } else {
-        breathingPhase = "Breathe out slowly";
-      }
-
-      updateBreathingDisplay();
-
-      if (breathingRemaining <= 0) {
-        stopBreathingExercise();
-        breathingPhase = "Session complete";
-        updateBreathingDisplay();
-        notify("Breathing session completed.", "success");
-      }
-    }, 1000);
-  }
-
-  function stopBreathingExercise() {
-    if (breathingInterval !== null) {
-      clearInterval(breathingInterval);
-      breathingInterval = null;
-    }
-
-    breathingRunning = false;
-
-    if (breathingRemaining > 0) {
-      breathingPhase = "Paused";
-    }
-
-    updateBreathingDisplay();
-  }
-
-  /* -------------------- HYDRATION TRACKER -------------------- */
-
-  function getWaterToday() {
-    const today = new Date().toDateString();
-
-    return hydrationEntries.filter((entry) => {
-      const date = new Date(entry.createdAt);
-
-      return !Number.isNaN(date.getTime()) &&
-        date.toDateString() === today;
-    }).length;
-  }
-
-  function addWater() {
-    hydrationEntries.unshift({
-      id: `${Date.now()}`,
-      createdAt: timestamp(),
-      amountMl: 250
-    });
-
-    hydrationEntries = hydrationEntries.slice(0, 500);
-
-    writeStorage(STORAGE_KEYS.hydration, hydrationEntries);
-    updateDashboard();
-
-    const waterMessage = byId("waterMessage");
-
-    if (waterMessage) {
-      waterMessage.textContent =
-        `${getWaterToday()} logged drinks today. Each entry represents 250 ml.`;
-    }
-
-    notify("One drink logged (250 ml).", "success");
-  }
-
-  function undoWater() {
-    const today = new Date().toDateString();
-
-    const index = hydrationEntries.findIndex((entry) => {
-      const date = new Date(entry.createdAt);
-
-      return !Number.isNaN(date.getTime()) &&
-        date.toDateString() === today;
-    });
-
-    if (index === -1) {
-      notify("No drink entry to undo today.", "warning");
-      return;
-    }
-
-    hydrationEntries.splice(index, 1);
-    writeStorage(STORAGE_KEYS.hydration, hydrationEntries);
-    updateDashboard();
-
-    notify("Latest drink entry removed.");
-  }
-
-  /* -------------------- MOOD DIARY -------------------- */
-
-  function saveMood() {
-    const moodInput = byId("moodSelect") ||
-      byId("moodInput") ||
-      $("select[name='mood']");
-
-    const noteInput = byId("moodNote") ||
-      byId("moodNotes") ||
-      $("textarea[name='moodNote']");
-
-    if (!moodInput || !moodInput.value) {
-      notify("Choose a mood first.", "warning");
-      return;
-    }
-
-    moodEntries.unshift({
-      id: `${Date.now()}`,
-      createdAt: timestamp(),
-      mood: moodInput.value,
-      note: noteInput ? noteInput.value.trim().slice(0, 1000) : ""
-    });
-
-    moodEntries = moodEntries.slice(0, 100);
-
-    writeStorage(STORAGE_KEYS.mood, moodEntries);
-
-    if (noteInput) noteInput.value = "";
-
-    renderMoodHistory();
-    notify("Mood entry saved privately in this browser.", "success");
-  }
-
-  function renderMoodHistory() {
-    const container = byId("moodHistory") ||
-      $("[data-mood-history]");
-
-    if (!container) return;
-
-    container.replaceChildren();
-
-    if (moodEntries.length === 0) {
-      const empty = document.createElement("p");
-      empty.textContent = "No mood entries yet.";
-      container.appendChild(empty);
-      return;
-    }
-
-    moodEntries.slice(0, 10).forEach((entry) => {
-      const item = document.createElement("article");
-
-      const title = document.createElement("strong");
-      title.textContent = entry.mood;
-
-      const date = document.createElement("small");
-      date.textContent = ` — ${formatDate(new Date(entry.createdAt))}`;
-
-      const note = document.createElement("p");
-      note.textContent = entry.note || "No note added.";
-
-      item.append(title, date, note);
-      container.appendChild(item);
-    });
-  }
-
-  /* -------------------- SLEEP LOG -------------------- */
-
-  function saveSleep() {
-    const hoursInput = byId("sleepHours") ||
-      $("input[name='sleepHours']");
-
-    const qualityInput = byId("sleepQuality") ||
-      $("select[name='sleepQuality']");
-
-    const hours = Number(hoursInput?.value);
-    const quality = qualityInput?.value || "not specified";
-
-    if (!Number.isFinite(hours) || hours < 0 || hours > 24) {
-      notify("Enter sleep hours between 0 and 24.", "warning");
-      return;
-    }
-
-    sleepEntries.unshift({
-      id: `${Date.now()}`,
-      createdAt: timestamp(),
-      hours,
-      quality
-    });
-
-    sleepEntries = sleepEntries.slice(0, 100);
-    writeStorage(STORAGE_KEYS.sleep, sleepEntries);
-
-    renderSleepHistory();
-    notify("Sleep entry saved.", "success");
-  }
-
-  function renderSleepHistory() {
-    const container = byId("sleepHistory") ||
-      $("[data-sleep-history]");
-
-    if (!container) return;
-
-    container.replaceChildren();
-
-    sleepEntries.slice(0, 10).forEach((entry) => {
-      const item = document.createElement("p");
-
-      item.textContent =
-        `${formatDate(new Date(entry.createdAt))}: ${entry.hours} hours, quality: ${entry.quality}`;
-
-      container.appendChild(item);
-    });
-
-    if (sleepEntries.length === 0) {
-      const empty = document.createElement("p");
-      empty.textContent = "No sleep records yet.";
-      container.appendChild(empty);
-    }
-  }
-
-  /* -------------------- REPORT GENERATOR -------------------- */
-
-  function createReportText() {
-    const latestWellness = wellnessEntries[0];
-    const todayWater = getWaterToday();
-
-    const report = [
-      "NAOL HEALTH SCANNER 3D",
-      "PERSONAL WELLNESS REFLECTION",
-      "========================================",
-      `Generated: ${new Date().toLocaleString()}`,
-      "",
-      "IMPORTANT NOTICE",
-      "This report is for personal wellness tracking only.",
-      "It is not a diagnosis, medical scan, or medical advice.",
-      "",
-      "PHOTO CAPTURES",
-      `Saved photos: ${captures.length}`,
-      "",
-      "HYDRATION TRACKER",
-      `Logged drinks today: ${todayWater}`,
-      `Logged amount (assuming 250 ml per entry): ${todayWater * 250} ml`,
-      "",
-      "WELLNESS SELF-CHECK"
-    ];
-
-    if (latestWellness) {
-      report.push(
-        `Latest check: ${new Date(latestWellness.createdAt).toLocaleString()}`,
-        `Reflection score: ${latestWellness.percentage}%`,
-        latestWellness.summary,
-        latestWellness.recommendation
-      );
-    } else {
-      report.push("No wellness self-check has been recorded.");
-    }
-
-    report.push("", "MOOD HISTORY");
-
-    if (moodEntries.length) {
-      moodEntries.slice(0, 10).forEach((entry) => {
-        report.push(
-          `${new Date(entry.createdAt).toLocaleString()} — ${entry.mood}: ${entry.note}`
-        );
-      });
-    } else {
-      report.push("No mood entries recorded.");
-    }
-
-    report.push("", "SLEEP HISTORY");
-
-    if (sleepEntries.length) {
-      sleepEntries.slice(0, 10).forEach((entry) => {
-        report.push(
-          `${new Date(entry.createdAt).toLocaleString()} — ${entry.hours} hours; ${entry.quality}`
-        );
-      });
-    } else {
-      report.push("No sleep entries recorded.");
-    }
-
-    report.push(
-      "",
-      "Privacy: report generated in this browser.",
-      "The illustrated 3D body is not a real anatomical scan.",
-      "Seek qualified medical care for medical concerns."
-    );
-
-    return report.join("\n");
-  }
-
-  function downloadReport() {
-    const reportText = createReportText();
-    const blob = new Blob([reportText], {
-      type: "text/plain;charset=utf-8"
-    });
-
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-
-    link.href = url;
-    link.download = `naol-wellness-report-${new Date().toISOString().slice(0, 10)}.txt`;
-
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-
-    URL.revokeObjectURL(url);
-
-    notify("Wellness report downloaded.", "success");
-  }
-
-  function showReportPreview() {
-    const target = byId("reportPreview") ||
-      byId("wellnessReport") ||
-      $("[data-report-preview]");
-
-    if (!target) {
-      downloadReport();
-      return;
-    }
-
-    target.textContent = createReportText();
-    target.hidden = false;
-  }
-
-  /* -------------------- SETTINGS -------------------- */
-
-  function applyTheme() {
-    const theme = settings.theme === "light" ? "light" : "dark";
-
-    document.documentElement.dataset.theme = theme;
-    document.body.dataset.theme = theme;
-
-    document.documentElement.classList.toggle(
-      "theme-light",
-      theme === "light"
-    );
-
-    document.documentElement.classList.toggle(
-      "theme-dark",
-      theme === "dark"
-    );
-
-    const themeButton = byId("toggleTheme") ||
-      byId("themeToggle");
-
-    if (themeButton) {
-      themeButton.textContent =
-        theme === "light" ? "Switch to dark mode" : "Switch to light mode";
-    }
-  }
-
-  function toggleTheme() {
-    settings.theme = settings.theme === "light" ? "dark" : "light";
-    saveSettings();
-    applyTheme();
-    notify(`Theme changed to ${settings.theme} mode.`);
-  }
-
-  function loadSettingsIntoForm() {
-    const mapping = {
-      autoRotate: settings.autoRotate,
-      rotationSpeed: settings.rotationSpeed,
-      scanSound: settings.scanSound,
-      autosave: settings.autosave,
-      showGrid: settings.showGrid,
-      showSkeleton: settings.showSkeleton,
-      hydrationGoal: settings.hydrationGoal
-    };
-
-    Object.entries(mapping).forEach(([name, value]) => {
-      const element = byId(name) ||
-        $(`[name="${name}"]`) ||
-        $(`[data-setting="${name}"]`);
-
-      if (!element) return;
-
-      if (element.type === "checkbox") {
-        element.checked = Boolean(value);
-      } else {
-        element.value = String(value);
-      }
-    });
-
-    const resolution = byId("cameraResolution");
-
-    if (resolution) {
-      resolution.value =
-        `${settings.cameraWidth}x${settings.cameraHeight}`;
-    }
-
-    applyTheme();
-  }
-
-  function saveSettingsFromForm() {
-    const names = [
-      "autoRotate",
-      "rotationSpeed",
-      "scanSound",
-      "autosave",
-      "showGrid",
-      "showSkeleton",
-      "hydrationGoal"
-    ];
-
-    names.forEach((name) => {
-      const element = byId(name) ||
-        $(`[name="${name}"]`) ||
-        $(`[data-setting="${name}"]`);
-
-      if (!element) return;
-
-      if (element.type === "checkbox") {
-        settings[name] = element.checked;
-      } else if (name === "rotationSpeed" ||
-                 name === "hydrationGoal") {
-        const value = Number(element.value);
-
-        if (Number.isFinite(value)) {
-          settings[name] = value;
+    function writeStorage(key, value) {
+        try {
+            localStorage.setItem(key, JSON.stringify(value));
+            return true;
+        } catch (error) {
+            console.warn("Could not save data:", error);
+            showToast(
+                "Could not save data. Browser storage may be full.",
+                "error"
+            );
+            return false;
         }
-      }
-    });
-
-    const resolution = byId("cameraResolution");
-
-    if (resolution?.value) {
-      const match = resolution.value.match(/^(\d+)x(\d+)$/);
-
-      if (match) {
-        settings.cameraWidth = Number(match[1]);
-        settings.cameraHeight = Number(match[2]);
-      }
     }
 
-    settings.rotationSpeed = clamp(
-      Number(settings.rotationSpeed) || 0.5,
-      0.1,
-      3
-    );
-
-    settings.hydrationGoal = clamp(
-      Math.round(Number(settings.hydrationGoal) || 8),
-      1,
-      30
-    );
-
-    saveSettings();
-
-    if (orbitControls) {
-      orbitControls.autoRotate = Boolean(settings.autoRotate);
-      orbitControls.autoRotateSpeed =
-        Number(settings.rotationSpeed) || 0.5;
+    function removeStorage(key) {
+        try {
+            localStorage.removeItem(key);
+        } catch (error) {
+            console.warn("Could not remove saved data:", error);
+        }
     }
 
-    if (gridHelper) {
-      gridHelper.visible = Boolean(settings.showGrid);
-    }
+    function escapeHTML(value) {
+        return String(value ?? "").replace(/[&<>"']/g, function (char) {
+            const entities = {
+                "&": "&amp;",
+                "<": "&lt;",
+                ">": "&gt;",
+                '"': "&quot;",
+                "'": "&#39;"
+            };
 
-    if (skeletonGroup) {
-      skeletonGroup.visible = Boolean(settings.showSkeleton);
-    }
-
-    updateDashboard();
-    notify("Settings saved.", "success");
-  }
-
-  function clearAllLocalData() {
-    const confirmed = window.confirm(
-      "Delete all saved photos, wellness entries, hydration logs, mood entries and sleep records from this browser? This cannot be undone."
-    );
-
-    if (!confirmed) return;
-
-    captures = [];
-    wellnessEntries = [];
-    hydrationEntries = [];
-    moodEntries = [];
-    sleepEntries = [];
-
-    Object.values(STORAGE_KEYS).forEach((key) => {
-      try {
-        localStorage.removeItem(key);
-      } catch (error) {
-        console.warn("Could not remove local storage:", error);
-      }
-    });
-
-    settings = { ...defaultSettings };
-
-    saveSettings();
-    loadSettingsIntoForm();
-    updateDashboard();
-    renderMoodHistory();
-    renderSleepHistory();
-
-    notify("Local application data cleared.", "success");
-  }
-
-  /* -------------------- BODY REGION INFORMATION -------------------- */
-
-  const bodyRegions = {
-    head: {
-      title: "Head",
-      description:
-        "The head contains the brain and sensory organs. This illustration cannot inspect or assess them."
-    },
-    brain: {
-      title: "Brain",
-      description:
-        "The brain supports thinking, memory, sensation, movement, and many automatic body functions. This is educational information, not a brain scan."
-    },
-    heart: {
-      title: "Heart",
-      description:
-        "The heart pumps blood through the circulatory system. This viewer does not measure heart function."
-    },
-    lungs: {
-      title: "Lungs",
-      description:
-        "The lungs exchange oxygen and carbon dioxide during breathing. This viewer cannot assess lung health."
-    },
-    chest: {
-      title: "Chest",
-      description:
-        "The chest contains important organs including the heart and lungs. The 3D model is illustrative only."
-    },
-    abdomen: {
-      title: "Abdomen",
-      description:
-        "The abdomen contains digestive organs and other structures. This illustration cannot detect abnormalities."
-    },
-    stomach: {
-      title: "Stomach",
-      description:
-        "The stomach helps digest food. This application cannot examine your stomach or digestive system."
-    },
-    muscles: {
-      title: "Muscles",
-      description:
-        "Muscles help move and stabilize the body. The displayed model does not measure muscle size or strength."
-    },
-    skeleton: {
-      title: "Skeleton",
-      description:
-        "The skeleton supports the body and protects some organs. This illustrative overlay is not a bone scan."
-    },
-    arms: {
-      title: "Arms",
-      description:
-        "The arms help with lifting, reaching, and manipulating objects. This viewer does not assess injuries."
-    },
-    legs: {
-      title: "Legs",
-      description:
-        "The legs support standing and walking. This viewer cannot diagnose joint, bone, or muscle problems."
-    },
-    nervous: {
-      title: "Nervous system",
-      description:
-        "The nervous system transmits signals throughout the body. It cannot be evaluated by this illustrative viewer."
-    },
-    circulation: {
-      title: "Circulatory system",
-      description:
-        "The circulatory system transports blood, oxygen, and nutrients. This application does not measure blood flow."
-    },
-    digestive: {
-      title: "Digestive system",
-      description:
-        "The digestive system processes food and absorbs nutrients. The illustration is not an internal scan."
-    }
-  };
-
-  function showBodyRegion(regionName) {
-    const key = String(regionName || "").toLowerCase();
-    const region = bodyRegions[key];
-
-    if (!region) {
-      notify("Body region information is unavailable.", "warning");
-      return;
-    }
-
-    const title = byId("bodyRegionTitle") ||
-      byId("anatomyTitle");
-
-    const description = byId("bodyRegionDescription") ||
-      byId("anatomyDescription");
-
-    if (title) title.textContent = region.title;
-    if (description) description.textContent = region.description;
-
-    const panel = byId("bodyRegionInfo") ||
-      byId("anatomyInfo");
-
-    if (panel) panel.hidden = false;
-  }
-
-  /* -------------------- EVENT HELPERS -------------------- */
-
-  function bindClick(ids, handler) {
-    ids.forEach((id) => {
-      const element = byId(id);
-
-      if (element) {
-        element.addEventListener("click", (event) => {
-          event.preventDefault();
-          handler(event);
+            return entities[char];
         });
-      }
+    }
+
+    function formatDate(date = new Date()) {
+        return date.toLocaleDateString(undefined, {
+            year: "numeric",
+            month: "short",
+            day: "numeric"
+        });
+    }
+
+    function formatDateTime(date = new Date()) {
+        return date.toLocaleString();
+    }
+
+    function showToast(message, type = "success") {
+        let container = getById("toastContainer");
+
+        if (!container) {
+            container = document.createElement("div");
+            container.id = "toastContainer";
+
+            Object.assign(container.style, {
+                position: "fixed",
+                right: "16px",
+                bottom: "20px",
+                zIndex: "99999",
+                display: "flex",
+                flexDirection: "column",
+                gap: "10px",
+                maxWidth: "min(360px, calc(100vw - 32px))"
+            });
+
+            document.body.appendChild(container);
+        }
+
+        const toast = document.createElement("div");
+
+        const background =
+            type === "error" ? "#b91c1c" :
+            type === "warning" ? "#92400e" :
+            "#047857";
+
+        Object.assign(toast.style, {
+            background,
+            color: "#ffffff",
+            padding: "13px 17px",
+            borderRadius: "12px",
+            boxShadow: "0 8px 24px rgba(0,0,0,.22)",
+            fontSize: "14px",
+            lineHeight: "1.5",
+            opacity: "0",
+            transform: "translateY(10px)",
+            transition: "opacity .2s ease, transform .2s ease",
+            overflowWrap: "anywhere"
+        });
+
+        toast.textContent = message;
+        container.appendChild(toast);
+
+        requestAnimationFrame(function () {
+            toast.style.opacity = "1";
+            toast.style.transform = "translateY(0)";
+        });
+
+        window.setTimeout(function () {
+            toast.style.opacity = "0";
+            toast.style.transform = "translateY(10px)";
+
+            window.setTimeout(function () {
+                toast.remove();
+            }, 250);
+        }, 3200);
+    }
+
+    function bind(id, eventName, callback) {
+        const element = getById(id);
+
+        if (!element) {
+            return;
+        }
+
+        element.addEventListener(eventName, function (event) {
+            try {
+                callback(event, element);
+            } catch (error) {
+                console.error("Action failed:", id, error);
+                showToast("Something went wrong. Please try again.", "error");
+            }
+        });
+    }
+
+    function setText(id, value) {
+        const element = getById(id);
+
+        if (element) {
+            element.textContent = value;
+        }
+    }
+
+    function setHTML(id, value) {
+        const element = getById(id);
+
+        if (element) {
+            element.innerHTML = value;
+        }
+    }
+
+    function downloadText(filename, content, mimeType = "text/plain") {
+        try {
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+
+            link.href = url;
+            link.download = filename;
+
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+
+            window.setTimeout(function () {
+                URL.revokeObjectURL(url);
+            }, 1000);
+
+            showToast("Download started.");
+        } catch (error) {
+            console.error(error);
+            showToast("Download failed.", "error");
+        }
+    }
+
+
+    /* ========================================================
+       2. GLOBAL STATE
+       ======================================================== */
+
+    let cameraStream = null;
+    let currentCamera = "environment";
+    let breathingTimer = null;
+    let breathingRunning = false;
+    let breathingPhase = 0;
+    let breathingSeconds = 4;
+    let threeScene = null;
+    let threeRenderer = null;
+    let threeCamera = null;
+    let threeControls = null;
+    let threeModel = null;
+    let threeAnimationId = null;
+    let threeInitialized = false;
+    let autoRotate = true;
+    let skeletonVisible = false;
+    let gridVisible = true;
+
+    let gallery = readStorage("naol_gallery", []);
+    let wellnessHistory = readStorage("naol_wellness_history", []);
+    let diaryHistory = readStorage("naol_diary_history", []);
+    let waterData = readStorage("naol_water_data", {
+        date: new Date().toDateString(),
+        amount: 0,
+        goal: 2000
     });
-  }
 
-  function bindInput(ids, handler) {
-    ids.forEach((id) => {
-      const element = byId(id);
+    if (!Array.isArray(gallery)) gallery = [];
+    if (!Array.isArray(wellnessHistory)) wellnessHistory = [];
+    if (!Array.isArray(diaryHistory)) diaryHistory = [];
 
-      if (element) {
-        element.addEventListener("change", handler);
-      }
+    if (!waterData || typeof waterData !== "object") {
+        waterData = {
+            date: new Date().toDateString(),
+            amount: 0,
+            goal: 2000
+        };
+    }
+
+    if (waterData.date !== new Date().toDateString()) {
+        waterData = {
+            date: new Date().toDateString(),
+            amount: 0,
+            goal: Number(waterData.goal) || 2000
+        };
+    }
+
+
+    /* ========================================================
+       3. NAVIGATION
+       ======================================================== */
+
+    function navigateToPage(pageName) {
+        const sections = $$(".page-section");
+
+        let target = sections.find(function (section) {
+            return section.id === pageName ||
+                section.dataset.page === pageName;
+        });
+
+        if (!target) {
+            console.warn("Page not found:", pageName);
+            showToast("This page could not be found.", "error");
+            return;
+        }
+
+        sections.forEach(function (section) {
+            section.classList.remove("active");
+            section.hidden = true;
+        });
+
+        target.classList.add("active");
+        target.hidden = false;
+
+        $$(".nav-button").forEach(function (button) {
+            const active =
+                button.dataset.section === pageName;
+
+            button.classList.toggle("active", active);
+
+            if (active) {
+                button.setAttribute("aria-current", "page");
+            } else {
+                button.removeAttribute("aria-current");
+            }
+        });
+
+        const title = target.dataset.title ||
+            target.querySelector("h1, h2")?.textContent ||
+            pageName.charAt(0).toUpperCase() + pageName.slice(1);
+
+        setText("pageTitle", title);
+        setText("pageSubtitle", "Naol Health Scanner 3D");
+
+        const sidebar = $(".sidebar");
+
+        if (sidebar && window.innerWidth <= 768) {
+            sidebar.classList.remove("open");
+        }
+
+        if (pageName === "viewer") {
+            initialize3DViewer();
+        }
+
+        if (pageName === "camera") {
+            updateCameraStatus();
+        }
+
+        if (pageName === "hydration") {
+            renderHydration();
+        }
+
+        if (pageName === "diary") {
+            renderDiaryHistory();
+        }
+
+        if (pageName === "wellness") {
+            renderWellnessHistory();
+        }
+
+        if (pageName === "reports") {
+            renderReportSummary();
+        }
+
+        window.scrollTo({
+            top: 0,
+            behavior: "smooth"
+        });
+    }
+
+    $$(".nav-button").forEach(function (button) {
+        button.addEventListener("click", function (event) {
+            event.preventDefault();
+
+            const pageName = button.dataset.section;
+
+            if (pageName) {
+                navigateToPage(pageName);
+            }
+        });
     });
-  }
 
-  /* -------------------- STANDARD BUTTONS -------------------- */
+    bind("menuToggle", "click", function () {
+        const sidebar = $(".sidebar");
 
-  bindClick(
-    ["startCamera", "startCameraBtn", "openCamera", "cameraStart"],
-    startCamera
-  );
+        if (sidebar) {
+            sidebar.classList.toggle("open");
+        } else {
+            showToast("Navigation menu is unavailable.", "warning");
+        }
+    });
 
-  bindClick(
-    ["stopCamera", "stopCameraBtn", "cameraStop"],
-    () => stopCamera(true)
-  );
+    $$(".nav-button").forEach(function (button) {
+        button.setAttribute("type", "button");
+    });
 
-  bindClick(
-    ["switchCamera", "switchCameraBtn", "flipCamera"],
-    switchCamera
-  );
+    // Ensure only the current page is visible on startup.
+    (function initializeNavigation() {
+        const sections = $$(".page-section");
 
-  bindClick(
-    ["capturePhoto", "captureBtn", "takePhoto", "scanCapture"],
-    () => capturePhoto("front")
-  );
+        if (!sections.length) {
+            console.warn("No .page-section elements were found.");
+            return;
+        }
 
-  bindClick(
-    ["captureFront", "frontCapture"],
-    () => capturePhoto("front")
-  );
+        let initialPage = sections.find(function (section) {
+            return section.classList.contains("active");
+        }) || sections[0];
 
-  bindClick(
-    ["captureLeft", "leftCapture"],
-    () => capturePhoto("left")
-  );
+        sections.forEach(function (section) {
+            const isActive = section === initialPage;
 
-  bindClick(
-    ["captureRight", "rightCapture"],
-    () => capturePhoto("right")
-  );
+            section.classList.toggle("active", isActive);
+            section.hidden = !isActive;
+        });
 
-  bindClick(
-    ["captureBack", "backCapture"],
-    () => capturePhoto("back")
-  );
+        $$(".nav-button").forEach(function (button) {
+            button.classList.toggle(
+                "active",
+                button.dataset.section === initialPage.id
+            );
+        });
+    })();
 
-  bindClick(
-    ["startScanSession", "start360Scan", "beginScan"],
-    startScanSession
-  );
 
-  bindClick(
-    ["captureNextView", "nextScanView", "capture360View"],
-    captureNextView
-  );
+    /* ========================================================
+       4. THEME SETTINGS
+       ======================================================== */
 
-  bindClick(
-    ["downloadAllCaptures", "downloadPhotos"],
-    downloadAllCaptures
-  );
+    function applyTheme(theme) {
+        const isDark = theme === "dark";
 
-  bindClick(
-    ["downloadReport", "generateReport", "exportReport"],
-    downloadReport
-  );
+        document.body.classList.toggle("dark-theme", isDark);
+        document.documentElement.dataset.theme = theme;
 
-  bindClick(
-    ["previewReport", "showReport"],
-    showReportPreview
-  );
+        try {
+            localStorage.setItem("naol_theme", theme);
+        } catch (error) {
+            console.warn("Theme preference could not be saved.");
+        }
 
-  bindClick(
-    ["startWellnessCheck", "submitWellness", "runSelfCheck"],
-    runWellnessCheck
-  );
+        const themeButton = getById("themeToggle");
 
-  bindClick(
-    ["startBreathing", "startBreathingExercise", "breathStart"],
-    startBreathingExercise
-  );
+        if (themeButton) {
+            themeButton.textContent = isDark ? "☀️" : "🌙";
+            themeButton.setAttribute(
+                "aria-label",
+                isDark ? "Switch to light mode" : "Switch to dark mode"
+            );
+        }
 
-  bindClick(
-    ["stopBreathing", "stopBreathingExercise", "breathStop"],
-    stopBreathingExercise
-  );
+        const settingsToggle = getById("settingsThemeToggle");
 
-  bindClick(
-    ["addWater", "logWater", "drinkWater"],
-    addWater
-  );
-
-  bindClick(
-    ["undoWater", "removeWater"],
-    undoWater
-  );
-
-  bindClick(
-    ["saveMood", "addMood"],
-    saveMood
-  );
-
-  bindClick(
-    ["saveSleep", "addSleep"],
-    saveSleep
-  );
-
-  bindClick(
-    ["saveSettings", "applySettings"],
-    saveSettingsFromForm
-  );
-
-  bindClick(
-    ["toggleTheme", "themeToggle"],
-    toggleTheme
-  );
-
-  bindClick(
-    ["toggleAutoRotate", "autoRotateToggle"],
-    toggleAutoRotate
-  );
-
-  bindClick(
-    ["toggleSkeleton", "skeletonToggle"],
-    toggleSkeleton
-  );
-
-  bindClick(
-    ["toggleGrid", "gridToggle"],
-    toggleGrid
-  );
-
-  bindClick(
-    ["reset3DView", "resetViewer", "reset3D"],
-    reset3DViewer
-  );
-
-  bindClick(
-    ["clearLocalData", "clearData", "deleteAllData"],
-    clearAllLocalData
-  );
-
-  bindClick(
-    ["openSettings", "settingsButton"],
-    () => showSection("settings")
-  );
-
-  bindClick(
-    ["openCameraPage", "cameraPageButton"],
-    () => showSection("camera")
-  );
-
-  bindClick(
-    ["openWellnessPage", "wellnessPageButton"],
-    () => showSection("wellness")
-  );
-
-  bindClick(
-    ["openAnatomyPage", "anatomyPageButton"],
-    () => showSection("anatomy")
-  );
-
-  bindClick(
-    ["openDashboard", "dashboardButton"],
-    () => showSection("dashboard")
-  );
-
-  /* -------------------- 3D VIEW BUTTONS -------------------- */
-
-  bindClick(
-    ["viewFront", "frontView", "bodyFrontView"],
-    () => set3DView("front")
-  );
-
-  bindClick(
-    ["viewBack", "backView", "bodyBackView"],
-    () => set3DView("back")
-  );
-
-  bindClick(
-    ["viewLeft", "leftView", "bodyLeftView"],
-    () => set3DView("left")
-  );
-
-  bindClick(
-    ["viewRight", "rightView", "bodyRightView"],
-    () => set3DView("right")
-  );
-
-  bindClick(
-    ["viewTop", "topView", "bodyTopView"],
-    () => set3DView("top")
-  );
-
-  /* -------------------- DYNAMIC DATA ATTRIBUTES -------------------- */
-
-  document.addEventListener("click", (event) => {
-    const target = event.target.closest(
-      "[data-action], [data-section], [data-page-link], [data-view], [data-region]"
-    );
-
-    if (!target) return;
-
-    const action = target.dataset.action;
-    const section = target.dataset.section ||
-      target.dataset.pageLink;
-    const view = target.dataset.view;
-    const region = target.dataset.region;
-
-    if (section) {
-      event.preventDefault();
-      showSection(section);
-      return;
+        if (settingsToggle) {
+            settingsToggle.checked = isDark;
+        }
     }
 
-    if (view) {
-      event.preventDefault();
-      set3DView(view);
-      return;
+    let savedTheme = "dark";
+
+    try {
+        savedTheme = localStorage.getItem("naol_theme") || "dark";
+    } catch (error) {
+        console.warn("Could not read theme preference.");
     }
 
-    if (region) {
-      event.preventDefault();
-      showBodyRegion(region);
-      return;
+    applyTheme(savedTheme);
+
+    bind("themeToggle", "click", function () {
+        const isDark = document.body.classList.contains("dark-theme");
+
+        applyTheme(isDark ? "light" : "dark");
+
+        showToast(
+            isDark ? "Light theme enabled." : "Dark theme enabled."
+        );
+    });
+
+    bind("settingsThemeToggle", "change", function (event, element) {
+        applyTheme(element.checked ? "dark" : "light");
+        showToast("Theme updated.");
+    });
+
+    bind("soundToggle", "change", function (event, element) {
+        try {
+            localStorage.setItem(
+                "naol_sound_enabled",
+                element.checked ? "true" : "false"
+            );
+        } catch (error) {
+            // Sound preference is optional.
+        }
+
+        showToast(
+            element.checked ? "Sound preference enabled." :
+                "Sound preference disabled."
+        );
+    });
+
+
+    /* ========================================================
+       5. CAMERA SYSTEM
+       ======================================================== */
+
+    function updateCameraStatus(message) {
+        if (message) {
+            setText("cameraStatus", message);
+            return;
+        }
+
+        const video = getById("cameraVideo");
+
+        if (cameraStream && video && video.srcObject) {
+            setText("cameraStatus", "Camera is running");
+        } else {
+            setText("cameraStatus", "Camera is not active");
+        }
     }
 
-    if (!action) return;
+    function stopCameraStream() {
+        if (cameraStream) {
+            cameraStream.getTracks().forEach(function (track) {
+                track.stop();
+            });
 
-    const actions = {
-      "start-camera": startCamera,
-      "stop-camera": () => stopCamera(true),
-      "switch-camera": switchCamera,
-      "capture-photo": () => capturePhoto("front"),
-      "capture-front": () => capturePhoto("front"),
-      "capture-left": () => capturePhoto("left"),
-      "capture-right": () => capturePhoto("right"),
-      "capture-back": () => capturePhoto("back"),
-      "start-scan": startScanSession,
-      "capture-next-view": captureNextView,
-      "download-photos": downloadAllCaptures,
-      "download-report": downloadReport,
-      "preview-report": showReportPreview,
-      "wellness-check": runWellnessCheck,
-      "breathing-start": startBreathingExercise,
-      "breathing-stop": stopBreathingExercise,
-      "add-water": addWater,
-      "undo-water": undoWater,
-      "save-mood": saveMood,
-      "save-sleep": saveSleep,
-      "save-settings": saveSettingsFromForm,
-      "toggle-theme": toggleTheme,
-      "toggle-rotation": toggleAutoRotate,
-      "toggle-skeleton": toggleSkeleton,
-      "toggle-grid": toggleGrid,
-      "reset-3d": reset3DViewer,
-      "clear-data": clearAllLocalData,
-      "view-front": () => set3DView("front"),
-      "view-back": () => set3DView("back"),
-      "view-left": () => set3DView("left"),
-      "view-right": () => set3DView("right"),
-      "view-top": () => set3DView("top")
+            cameraStream = null;
+        }
+
+        const video = getById("cameraVideo");
+
+        if (video) {
+            video.pause();
+            video.srcObject = null;
+        }
+
+        const placeholder = getById("cameraPlaceholder");
+
+        if (placeholder) {
+            placeholder.hidden = false;
+        }
+
+        updateCameraStatus("Camera stopped");
+    }
+
+    async function startCameraStream() {
+        const video = getById("cameraVideo");
+
+        if (!video) {
+            showToast("Camera video element was not found in index.html.", "error");
+            return;
+        }
+
+        if (!navigator.mediaDevices ||
+            !navigator.mediaDevices.getUserMedia) {
+
+            updateCameraStatus("Camera requires HTTPS or localhost.");
+
+            showToast(
+                "Open this website through HTTPS and allow camera access.",
+                "error"
+            );
+
+            return;
+        }
+
+        stopCameraStream();
+
+        updateCameraStatus("Requesting camera permission...");
+
+        try {
+            cameraStream = await navigator.mediaDevices.getUserMedia({
+                audio: false,
+                video: {
+                    facingMode: currentCamera,
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                }
+            });
+
+            video.srcObject = cameraStream;
+            video.muted = true;
+            video.playsInline = true;
+
+            await video.play();
+
+            const placeholder = getById("cameraPlaceholder");
+
+            if (placeholder) {
+                placeholder.hidden = true;
+            }
+
+            updateCameraStatus("Camera is running");
+
+            showToast("Camera started successfully.");
+
+        } catch (error) {
+            console.error("Camera error:", error);
+
+            let message = "Unable to open camera.";
+
+            if (error.name === "NotAllowedError" ||
+                error.name === "PermissionDeniedError") {
+
+                message = "Camera permission denied. Allow camera access in browser settings.";
+
+            } else if (error.name === "NotFoundError") {
+
+                message = "No compatible camera was found.";
+
+            } else if (error.name === "NotReadableError") {
+
+                message = "Camera may already be in use by another app.";
+
+            } else if (error.name === "OverconstrainedError") {
+
+                message = "Requested camera settings are not supported.";
+
+            } else if (error.name === "SecurityError") {
+
+                message = "Camera access requires a secure HTTPS connection.";
+            }
+
+            updateCameraStatus(message);
+            showToast(message, "error");
+        }
+    }
+
+    bind("startCamera", "click", startCameraStream);
+
+    bind("stopCamera", "click", function () {
+        stopCameraStream();
+        showToast("Camera stopped.");
+    });
+
+    bind("switchCamera", "click", async function () {
+        currentCamera =
+            currentCamera === "environment" ? "user" : "environment";
+
+        if (cameraStream) {
+            await startCameraStream();
+        } else {
+            showToast(
+                currentCamera === "user" ?
+                    "Front camera selected." :
+                    "Rear camera selected."
+            );
+        }
+    });
+
+    function captureCameraPhoto() {
+        const video = getById("cameraVideo");
+        const canvas = getById("captureCanvas") ||
+            getById("cameraCanvas");
+
+        if (!video || !canvas) {
+            showToast("Camera or canvas element was not found.", "error");
+            return;
+        }
+
+        if (!video.srcObject ||
+            video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA ||
+            !video.videoWidth) {
+
+            showToast("Start the camera and wait for the preview.", "warning");
+            return;
+        }
+
+        const context = canvas.getContext("2d");
+
+        if (!context) {
+            showToast("Photo capture is unavailable.", "error");
+            return;
+        }
+
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        context.drawImage(
+            video,
+            0,
+            0,
+            canvas.width,
+            canvas.height
+        );
+
+        canvas.toBlob(function (blob) {
+            if (!blob) {
+                showToast("Could not create the photo.", "error");
+                return;
+            }
+
+            const reader = new FileReader();
+
+            reader.onload = function () {
+                const photo = {
+                    id: Date.now() + Math.random(),
+                    date: new Date().toISOString(),
+                    data: reader.result
+                };
+
+                gallery.unshift(photo);
+
+                // Avoid exceeding localStorage quota.
+                const maxPhotos = 8;
+
+                gallery = gallery.slice(0, maxPhotos);
+
+                const saved = writeStorage("naol_gallery", gallery);
+
+                renderGallery();
+
+                if (saved) {
+                    showToast("Photo captured and saved.");
+                }
+            };
+
+            reader.onerror = function () {
+                showToast("Could not read the captured photo.", "error");
+            };
+
+            reader.readAsDataURL(blob);
+
+        }, "image/jpeg", 0.88);
+    }
+
+    bind("capturePhoto", "click", captureCameraPhoto);
+
+    let scanInterval = null;
+
+    bind("startScan", "click", function () {
+        if (!cameraStream) {
+            showToast("Start the camera before scanning.", "warning");
+            return;
+        }
+
+        if (scanInterval) {
+            showToast("Camera preview is already active.");
+            return;
+        }
+
+        updateCameraStatus("Preview monitoring is active.");
+
+        scanInterval = window.setInterval(function () {
+            if (!cameraStream) {
+                clearInterval(scanInterval);
+                scanInterval = null;
+                return;
+            }
+
+            updateCameraStatus(
+                "Camera preview active — no medical diagnosis performed."
+            );
+        }, 2000);
+
+        showToast(
+            "Preview monitoring started. This does not scan or diagnose the body."
+        );
+    });
+
+    function stopPreviewMonitoring() {
+        if (scanInterval) {
+            clearInterval(scanInterval);
+            scanInterval = null;
+        }
+
+        updateCameraStatus(
+            cameraStream ? "Camera is running" : "Camera is not active"
+        );
+    }
+
+    bind("stopScan", "click", function () {
+        stopPreviewMonitoring();
+        showToast("Preview monitoring stopped.");
+    });
+
+
+    /* ========================================================
+       6. PHOTO GALLERY
+       ======================================================== */
+
+    function renderGallery() {
+        setText("galleryCount", String(gallery.length));
+
+        const container = getById("captureGallery");
+
+        if (!container) {
+            return;
+        }
+
+        if (!gallery.length) {
+            container.innerHTML =
+                '<p class="empty-state">No photos captured yet.</p>';
+            return;
+        }
+
+        container.innerHTML = gallery.map(function (photo, index) {
+            return `
+                <div class="gallery-item"
+                     style="display:inline-block;vertical-align:top;
+                            margin:6px;max-width:180px">
+
+                    <img
+                        src="${photo.data}"
+                        alt="Captured photo ${index + 1}"
+                        loading="lazy"
+                        style="width:160px;height:120px;object-fit:cover;
+                               border-radius:10px;display:block">
+
+                    <div style="margin-top:6px;font-size:12px">
+                        ${escapeHTML(formatDateTime(new Date(photo.date)))}
+                    </div>
+
+                    <button
+                        type="button"
+                        data-download-photo="${index}"
+                        style="margin-top:6px">
+
+                        Download
+                    </button>
+                </div>
+            `;
+        }).join("");
+    }
+
+    bind("captureGallery", "click", function (event, element) {
+        const button = event.target.closest("[data-download-photo]");
+
+        if (!button || !element.contains(button)) {
+            return;
+        }
+
+        const index = Number(button.dataset.downloadPhoto);
+        const photo = gallery[index];
+
+        if (!photo || !photo.data) {
+            showToast("Photo not found.", "error");
+            return;
+        }
+
+        const link = document.createElement("a");
+
+        link.href = photo.data;
+        link.download = "naol-photo-" + (index + 1) + ".jpg";
+
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+    });
+
+    bind("downloadAllPhotos", "click", function () {
+        if (!gallery.length) {
+            showToast("There are no photos to download.", "warning");
+            return;
+        }
+
+        // Download photos individually because no ZIP library is included.
+        gallery.forEach(function (photo, index) {
+            window.setTimeout(function () {
+                const link = document.createElement("a");
+
+                link.href = photo.data;
+                link.download = "naol-photo-" + (index + 1) + ".jpg";
+
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+            }, index * 250);
+        });
+
+        showToast("Photo downloads started.");
+    });
+
+    bind("clearGallery", "click", function () {
+        if (!gallery.length) {
+            showToast("Gallery is already empty.");
+            return;
+        }
+
+        if (!window.confirm("Delete all saved photos?")) {
+            return;
+        }
+
+        gallery = [];
+        writeStorage("naol_gallery", gallery);
+        renderGallery();
+
+        showToast("Gallery cleared.");
+    });
+
+    renderGallery();
+
+
+    /* ========================================================
+       7. 3D HUMAN VIEWER
+       ======================================================== */
+
+    function createFallback3D() {
+        const container = getById("body3DViewer");
+
+        if (!container || container.dataset.fallbackReady === "true") {
+            return;
+        }
+
+        container.dataset.fallbackReady = "true";
+
+        container.innerHTML = `
+            <div class="naol-fallback-viewer"
+                 style="min-height:350px;display:flex;flex-direction:column;
+                        align-items:center;justify-content:center;
+                        gap:15px;perspective:800px;overflow:hidden;
+                        border-radius:16px">
+
+                <div class="naol-fallback-person"
+                     style="position:relative;width:150px;height:245px;
+                            transform-style:preserve-3d;
+                            animation:naolFloat 4s ease-in-out infinite">
+
+                    <div style="position:absolute;top:0;left:52px;
+                                width:46px;height:46px;border-radius:50%;
+                                background:linear-gradient(135deg,#f6c99c,#dca06f);
+                                box-shadow:inset -5px -3px 8px #9a6347">
+                    </div>
+
+                    <div style="position:absolute;top:50px;left:38px;
+                                width:74px;height:95px;border-radius:25px 25px 15px 15px;
+                                background:linear-gradient(120deg,#42d7ee,#2563eb);
+                                box-shadow:inset -10px -5px 12px rgba(0,0,0,.2)">
+                    </div>
+
+                    <div style="position:absolute;top:55px;left:12px;
+                                width:23px;height:90px;border-radius:14px;
+                                background:linear-gradient(90deg,#f2c39d,#cf926b);
+                                transform:rotate(8deg)">
+                    </div>
+
+                    <div style="position:absolute;top:55px;right:12px;
+                                width:23px;height:90px;border-radius:14px;
+                                background:linear-gradient(90deg,#cf926b,#f2c39d);
+                                transform:rotate(-8deg)">
+                    </div>
+
+                    <div style="position:absolute;top:143px;left:42px;
+                                width:28px;height:95px;border-radius:13px;
+                                background:linear-gradient(90deg,#334155,#64748b)">
+                    </div>
+
+                    <div style="position:absolute;top:143px;right:42px;
+                                width:28px;height:95px;border-radius:13px;
+                                background:linear-gradient(90deg,#64748b,#334155)">
+                    </div>
+                </div>
+
+                <p style="text-align:center;max-width:280px;padding:0 12px">
+                    Illustrative 3D-style human model.
+                    External 3D rendering is not available.
+                </p>
+            </div>
+
+            <style>
+                @keyframes naolFloat {
+                    0%,100% { transform: rotateY(-8deg) translateY(0); }
+                    50% { transform: rotateY(8deg) translateY(-7px); }
+                }
+            </style>
+        `;
+    }
+
+    async function initialize3DViewer() {
+        if (threeInitialized) {
+            return;
+        }
+
+        const container = getById("body3DViewer");
+
+        if (!container) {
+            return;
+        }
+
+        threeInitialized = true;
+
+        // Keep the website functional if external 3D libraries are blocked.
+        try {
+            const THREE = await import(
+                "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+            );
+
+            const { OrbitControls } = await import(
+                "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js"
+            );
+
+            build3DViewer(THREE, OrbitControls, container);
+
+        } catch (error) {
+            console.warn("Three.js could not load:", error);
+
+            createFallback3D();
+
+            showToast(
+                "Using the basic 3D-style model. Check your internet connection for full 3D.",
+                "warning"
+            );
+        }
+    }
+
+    function build3DViewer(THREE, OrbitControls, container) {
+        container.innerHTML = "";
+
+        const width = Math.max(container.clientWidth, 300);
+        const height = Math.max(container.clientHeight, 350);
+
+        threeScene = new THREE.Scene();
+        threeScene.background = new THREE.Color(0x101827);
+
+        threeCamera = new THREE.PerspectiveCamera(
+            45,
+            width / height,
+            0.1,
+            100
+        );
+
+        threeCamera.position.set(4, 3, 7);
+
+        threeRenderer = new THREE.WebGLRenderer({
+            antialias: true,
+            alpha: false
+        });
+
+        threeRenderer.setPixelRatio(
+            Math.min(window.devicePixelRatio || 1, 2)
+        );
+
+        threeRenderer.setSize(width, height);
+
+        container.appendChild(threeRenderer.domElement);
+
+        threeRenderer.domElement.style.display = "block";
+        threeRenderer.domElement.style.width = "100%";
+        threeRenderer.domElement.style.borderRadius = "14px";
+
+        const ambient = new THREE.HemisphereLight(
+            0xffffff,
+            0x334155,
+            2
+        );
+
+        threeScene.add(ambient);
+
+        const mainLight = new THREE.DirectionalLight(0xffffff, 2.5);
+        mainLight.position.set(4, 8, 5);
+        threeScene.add(mainLight);
+
+        const fillLight = new THREE.PointLight(0x38bdf8, 25);
+        fillLight.position.set(-4, 2, -3);
+        threeScene.add(fillLight);
+
+        if (gridVisible) {
+            const grid = new THREE.GridHelper(
+                8,
+                16,
+                0x38bdf8,
+                0x334155
+            );
+
+            grid.position.y = -2.1;
+            threeScene.add(grid);
+            threeScene.userData.grid = grid;
+        }
+
+        threeControls = new OrbitControls(
+            threeCamera,
+            threeRenderer.domElement
+        );
+
+        threeControls.enableDamping = true;
+        threeControls.dampingFactor = 0.06;
+        threeControls.target.set(0, 0, 0);
+
+        const person = new THREE.Group();
+
+        function createSphere(radius, position, color, scale = [1, 1, 1]) {
+            const geometry = new THREE.SphereGeometry(radius, 24, 20);
+
+            const material = new THREE.MeshStandardMaterial({
+                color,
+                roughness: 0.5,
+                metalness: 0.05
+            });
+
+            const mesh = new THREE.Mesh(geometry, material);
+
+            mesh.position.set(...position);
+            mesh.scale.set(...scale);
+
+            person.add(mesh);
+
+            return mesh;
+        }
+
+        function createCapsule(radius, length, position, color) {
+            const geometry = new THREE.CapsuleGeometry(
+                radius,
+                length,
+                6,
+                12
+            );
+
+            const material = new THREE.MeshStandardMaterial({
+                color,
+                roughness: 0.55
+            });
+
+            const mesh = new THREE.Mesh(geometry, material);
+
+            mesh.position.set(...position);
+
+            person.add(mesh);
+
+            return mesh;
+        }
+
+        const skin = 0xdba47c;
+        const shirt = 0x38bdf8;
+        const trousers = 0x334155;
+        const joints = [];
+
+        // Head and neck.
+        createSphere(0.35, [0, 1.55, 0], skin, [0.85, 1.05, 0.9]);
+
+        createCapsule(0.13, 0.15, [0, 1.12, 0], skin);
+
+        // Torso.
+        createSphere(0.57, [0, 0.45, 0], shirt, [0.8, 1.15, 0.5]);
+
+        // Pelvis.
+        createSphere(0.38, [0, -0.35, 0], trousers, [1, 0.7, 0.6]);
+
+        // Arms.
+        const leftUpperArm = createCapsule(
+            0.15, 0.52, [-0.58, 0.53, 0], skin
+        );
+
+        leftUpperArm.rotation.z = 0.15;
+
+        const rightUpperArm = createCapsule(
+            0.15, 0.52, [0.58, 0.53, 0], skin
+        );
+
+        rightUpperArm.rotation.z = -0.15;
+
+        const leftForearm = createCapsule(
+            0.12, 0.48, [-0.69, -0.1, 0], skin
+        );
+
+        leftForearm.rotation.z = 0.06;
+
+        const rightForearm = createCapsule(
+            0.12, 0.48, [0.69, -0.1, 0], skin
+        );
+
+        rightForearm.rotation.z = -0.06;
+
+        // Legs.
+        const leftLeg = createCapsule(
+            0.18, 0.78, [-0.22, -1.1, 0], trousers
+        );
+
+        const rightLeg = createCapsule(
+            0.18, 0.78, [0.22, -1.1, 0], trousers
+        );
+
+        // Feet.
+        createSphere(0.19, [-0.22, -1.68, 0.08], 0xe5e7eb, [1, 0.55, 1.6]);
+        createSphere(0.19, [0.22, -1.68, 0.08], 0xe5e7eb, [1, 0.55, 1.6]);
+
+        // Decorative joints.
+        joints.push(
+            createSphere(0.14, [-0.58, 0.25, 0], skin),
+            createSphere(0.14, [0.58, 0.25, 0], skin),
+            createSphere(0.12, [-0.69, -0.38, 0], skin),
+            createSphere(0.12, [0.69, -0.38, 0], skin),
+            createSphere(0.2, [-0.22, -0.8, 0], trousers),
+            createSphere(0.2, [0.22, -0.8, 0], trousers)
+        );
+
+        // The model is illustrative and does not represent real anatomy.
+        threeModel = person;
+
+        threeScene.add(person);
+
+        // Optional decorative outline.
+        const edges = new THREE.EdgesGeometry(
+            new THREE.BoxGeometry(1.6, 3.8, 0.7)
+        );
+
+        const outline = new THREE.LineSegments(
+            edges,
+            new THREE.LineBasicMaterial({
+                color: 0x38bdf8,
+                transparent: true,
+                opacity: 0.14
+            })
+        );
+
+        outline.position.y = 0.05;
+        threeScene.add(outline);
+
+        threeScene.userData.person = person;
+        threeScene.userData.outline = outline;
+        threeScene.userData.joints = joints;
+        threeScene.userData.legs = [leftLeg, rightLeg];
+
+        const resizeObserver = new ResizeObserver(function () {
+            if (!threeRenderer || !threeCamera) {
+                return;
+            }
+
+            const newWidth = Math.max(container.clientWidth, 300);
+            const newHeight = Math.max(container.clientHeight, 350);
+
+            threeCamera.aspect = newWidth / newHeight;
+            threeCamera.updateProjectionMatrix();
+
+            threeRenderer.setSize(newWidth, newHeight);
+        });
+
+        resizeObserver.observe(container);
+
+        function animate() {
+            threeAnimationId = requestAnimationFrame(animate);
+
+            if (autoRotate && threeModel) {
+                threeModel.rotation.y += 0.003;
+            }
+
+            if (threeControls) {
+                threeControls.update();
+            }
+
+            threeRenderer.render(threeScene, threeCamera);
+        }
+
+        animate();
+
+        showToast("3D viewer loaded.");
+    }
+
+    function set3DView(view) {
+        if (!threeCamera || !threeControls) {
+            initialize3DViewer();
+
+            showToast(
+                "Open the 3D viewer and wait for it to load.",
+                "warning"
+            );
+
+            return;
+        }
+
+        const views = {
+            front: [0, 1.2, 7],
+            back: [0, 1.2, -7],
+            left: [-7, 1.2, 0],
+            right: [7, 1.2, 0],
+            top: [0, 8, 0.1]
+        };
+
+        const position = views[view];
+
+        if (!position) {
+            return;
+        }
+
+        threeCamera.position.set(...position);
+        threeControls.target.set(0, 0, 0);
+        threeControls.update();
+    }
+
+    bind("viewFront", "click", function () {
+        set3DView("front");
+    });
+
+    bind("viewBack", "click", function () {
+        set3DView("back");
+    });
+
+    bind("viewLeft", "click", function () {
+        set3DView("left");
+    });
+
+    bind("viewRight", "click", function () {
+        set3DView("right");
+    });
+
+    bind("viewTop", "click", function () {
+        set3DView("top");
+    });
+
+    bind("reset3D", "click", function () {
+        if (threeModel) {
+            threeModel.rotation.set(0, 0, 0);
+        }
+
+        set3DView("front");
+
+        showToast("3D view reset.");
+    });
+
+    bind("autoRotate", "change", function (event, element) {
+        autoRotate = element.checked;
+
+        if (autoRotate && !threeInitialized) {
+            initialize3DViewer();
+        }
+
+        showToast(
+            autoRotate ? "Auto-rotation enabled." :
+                "Auto-rotation disabled."
+        );
+    });
+
+    bind("autoRotateSetting", "change", function (event, element) {
+        autoRotate = element.checked;
+
+        const mainToggle = getById("autoRotate");
+
+        if (mainToggle) {
+            mainToggle.checked = autoRotate;
+        }
+
+        showToast(
+            autoRotate ? "Auto-rotation enabled." :
+                "Auto-rotation disabled."
+        );
+    });
+
+    bind("toggleGrid", "click", function () {
+        gridVisible = !gridVisible;
+
+        if (threeScene) {
+            const grid = threeScene.userData.grid;
+
+            if (grid) {
+                grid.visible = gridVisible;
+            }
+        }
+
+        showToast(gridVisible ? "Grid enabled." : "Grid disabled.");
+    });
+
+    bind("toggleSkeleton", "click", function () {
+        skeletonVisible = !skeletonVisible;
+
+        if (threeScene) {
+            const joints = threeScene.userData.joints || [];
+
+            joints.forEach(function (joint) {
+                joint.visible = skeletonVisible;
+            });
+
+            const outline = threeScene.userData.outline;
+
+            if (outline) {
+                outline.visible = skeletonVisible;
+            }
+        }
+
+        showToast(
+            skeletonVisible ?
+                "Illustrative structure enabled." :
+                "Illustrative structure hidden."
+        );
+    });
+
+    const anatomyDescriptions = {
+        head: "Head: an illustrative part of the 3D model.",
+        brain: "Brain: this model does not visualize or measure brain activity.",
+        chest: "Chest: the model cannot measure heart or lung function.",
+        heart: "Heart: heart health cannot be determined using this illustration.",
+        lungs: "Lungs: this illustration cannot assess breathing or lung function.",
+        abdomen: "Abdomen: no internal organs are medically visualized.",
+        arms: "Arms: illustrative upper limbs.",
+        legs: "Legs: illustrative lower limbs."
     };
 
-    const handler = actions[action];
+    $$("[data-region]").forEach(function (button) {
+        button.addEventListener("click", function () {
+            const region = button.dataset.region;
+            const description = anatomyDescriptions[region] ||
+                "This is an illustrative body region.";
 
-    if (handler) {
-      event.preventDefault();
-      handler();
-    }
-  });
+            setText("anatomyInfo", description);
 
-  /* -------------------- SETTING INPUT LISTENERS -------------------- */
+            $$("#body3DViewer [data-highlight]").forEach(function (item) {
+                item.classList.remove("selected");
+            });
 
-  bindInput(
-    ["autoRotate", "rotationSpeed", "scanSound", "autosave",
-     "showGrid", "showSkeleton", "hydrationGoal", "cameraResolution"],
-    () => {
-      saveSettingsFromForm();
-    }
-  );
-
-  /* -------------------- OPTIONAL MOBILE MENU -------------------- */
-
-  bindClick(
-    ["menuToggle", "mobileMenuToggle", "hamburgerButton"],
-    () => {
-      const menu =
-        byId("mobileMenu") ||
-        byId("sidebar") ||
-        $(".sidebar");
-
-      if (!menu) return;
-
-      menu.classList.toggle("open");
-      menu.classList.toggle("active");
-    }
-  );
-
-  /* -------------------- TAB SUPPORT -------------------- */
-
-  $$("[data-tab-target]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const targetId = button.dataset.tabTarget;
-
-      $$("[data-tab-target]").forEach((tab) => {
-        tab.classList.toggle("active", tab === button);
-      });
-
-      $$("[data-tab-panel]").forEach((panel) => {
-        panel.hidden = panel.dataset.tabPanel !== targetId;
-      });
+            button.classList.add("selected");
+        });
     });
-  });
 
-  /* -------------------- KEYBOARD SUPPORT -------------------- */
 
-  document.addEventListener("keydown", (event) => {
-    const activeTag = document.activeElement?.tagName;
+    /* ========================================================
+       8. WELLNESS ASSESSMENT
+       ======================================================== */
 
-    if (
-      activeTag === "INPUT" ||
-      activeTag === "TEXTAREA" ||
-      activeTag === "SELECT" ||
-      event.ctrlKey ||
-      event.metaKey ||
-      event.altKey
-    ) {
-      return;
+    function renderWellnessHistory() {
+        const container = getById("wellnessHistory");
+
+        if (!container) {
+            return;
+        }
+
+        if (!wellnessHistory.length) {
+            container.innerHTML =
+                '<p class="empty-state">No wellness entries yet.</p>';
+            return;
+        }
+
+        container.innerHTML = wellnessHistory
+            .slice(0, 10)
+            .map(function (item) {
+                return `
+                    <article class="history-item"
+                             style="padding:12px;margin-bottom:10px;
+                                    border-radius:10px">
+
+                        <strong>${escapeHTML(item.date)}</strong>
+
+                        <p>
+                            Energy: ${escapeHTML(item.energy)}/5 |
+                            Sleep: ${escapeHTML(item.sleep)} hours
+                        </p>
+
+                        <p>
+                            Mood: ${escapeHTML(item.mood)} |
+                            Activity: ${escapeHTML(item.activity)}
+                        </p>
+
+                        <p>Water: ${escapeHTML(item.water)} ml</p>
+
+                        <p>${escapeHTML(item.notes || "")}</p>
+                    </article>
+                `;
+            }).join("");
     }
 
-    if (event.key === "Escape") {
-      stopBreathingExercise();
+    bind("wellnessForm", "submit", function (event, form) {
+        event.preventDefault();
 
-      const menu =
-        byId("mobileMenu") ||
-        byId("sidebar") ||
-        $(".sidebar");
+        const formData = new FormData(form);
 
-      menu?.classList.remove("open", "active");
+        const entry = {
+            date: formatDateTime(),
+            timestamp: Date.now(),
+            energy: String(formData.get("energy") || "3"),
+            sleep: String(formData.get("sleep") || "0"),
+            mood: String(formData.get("mood") || "Okay"),
+            activity: String(formData.get("activity") || "Light"),
+            water: String(formData.get("water") || "0"),
+            notes: String(
+                formData.get("wellnessNotes") ||
+                getById("wellnessNotes")?.value ||
+                ""
+            ).slice(0, 1000)
+        };
+
+        wellnessHistory.unshift(entry);
+        wellnessHistory = wellnessHistory.slice(0, 100);
+
+        writeStorage("naol_wellness_history", wellnessHistory);
+
+        const result = getById("wellnessResult");
+
+        if (result) {
+            result.hidden = false;
+
+            result.textContent =
+                "Your wellness entry has been saved. " +
+                "Review your sleep, mood, hydration, and activity habits over time. " +
+                "This is not a medical diagnosis.";
+        }
+
+        renderWellnessHistory();
+
+        showToast("Wellness entry saved.");
+    });
+
+    renderWellnessHistory();
+
+
+    /* ========================================================
+       9. BREATHING EXERCISE
+       ======================================================== */
+
+    const breathingPhases = [
+        {
+            label: "Breathe in",
+            duration: 4,
+            scale: 1.35
+        },
+        {
+            label: "Hold",
+            duration: 4,
+            scale: 1.35
+        },
+        {
+            label: "Breathe out",
+            duration: 4,
+            scale: 0.85
+        },
+        {
+            label: "Rest",
+            duration: 2,
+            scale: 0.85
+        }
+    ];
+
+    function renderBreathingPhase() {
+        const phase = breathingPhases[breathingPhase];
+
+        setText("breathingInstruction", phase.label);
+        setText("breathingCountdown", String(breathingSeconds));
+
+        const orb = getById("breathingOrb");
+
+        if (orb) {
+            orb.style.transition = "transform 1s ease-in-out";
+            orb.style.transform = "scale(" + phase.scale + ")";
+        }
     }
-  });
 
-  /* -------------------- PAGE VISIBILITY -------------------- */
+    function stopBreathingExercise() {
+        breathingRunning = false;
 
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden && cameraActive) {
-      stopCamera(false);
-      updateCameraStatus("Camera stopped while the page was hidden.", "idle");
+        if (breathingTimer) {
+            clearInterval(breathingTimer);
+            breathingTimer = null;
+        }
+
+        setText("breathingInstruction", "Ready to breathe?");
+        setText("breathingCountdown", "0");
+
+        const orb = getById("breathingOrb");
+
+        if (orb) {
+            orb.style.transform = "scale(1)";
+        }
     }
-  });
 
-  window.addEventListener("beforeunload", () => {
-    if (cameraStream) {
-      cameraStream.getTracks().forEach((track) => track.stop());
+    function startBreathingExercise() {
+        if (breathingRunning) {
+            showToast("Breathing exercise is already running.");
+            return;
+        }
+
+        breathingRunning = true;
+        breathingPhase = 0;
+        breathingSeconds = breathingPhases[0].duration;
+
+        renderBreathingPhase();
+
+        breathingTimer = window.setInterval(function () {
+            if (!breathingRunning) {
+                return;
+            }
+
+            breathingSeconds--;
+
+            if (breathingSeconds <= 0) {
+                breathingPhase =
+                    (breathingPhase + 1) % breathingPhases.length;
+
+                breathingSeconds =
+                    breathingPhases[breathingPhase].duration;
+            }
+
+            renderBreathingPhase();
+
+        }, 1000);
+
+        showToast("Breathing exercise started.");
     }
 
-    if (animationFrame3D !== null) {
-      cancelAnimationFrame(animationFrame3D);
+    bind("startBreathing", "click", startBreathingExercise);
+
+    bind("stopBreathing", "click", function () {
+        stopBreathingExercise();
+        showToast("Breathing exercise stopped.");
+    });
+
+
+    /* ========================================================
+       10. HYDRATION TRACKER
+       ======================================================== */
+
+    function renderHydration() {
+        if (waterData.date !== new Date().toDateString()) {
+            waterData = {
+                date: new Date().toDateString(),
+                amount: 0,
+                goal: Number(waterData.goal) || 2000
+            };
+        }
+
+        waterData.amount = Math.max(
+            0,
+            Number(waterData.amount) || 0
+        );
+
+        waterData.goal = Math.max(
+            1,
+            Number(waterData.goal) || 2000
+        );
+
+        const percentage = Math.min(
+            100,
+            Math.round((waterData.amount / waterData.goal) * 100)
+        );
+
+        setText("waterProgress", percentage + "%");
+        setText(
+            "waterGoalText",
+            waterData.amount + " / " + waterData.goal + " ml"
+        );
+
+        const progressElement = getById("waterProgress");
+
+        if (progressElement) {
+            if (progressElement.tagName === "PROGRESS") {
+                progressElement.max = 100;
+                progressElement.value = percentage;
+            } else {
+                progressElement.style.width = percentage + "%";
+            }
+        }
+
+        const goalInput = getById("waterGoal");
+
+        if (goalInput && !goalInput.matches(":focus")) {
+            goalInput.value = waterData.goal;
+        }
+
+        writeStorage("naol_water_data", waterData);
     }
 
-    if (breathingInterval !== null) {
-      clearInterval(breathingInterval);
+    function addWater(amount) {
+        amount = Number(amount);
+
+        if (!Number.isFinite(amount) || amount <= 0) {
+            showToast("Enter a valid water amount.", "error");
+            return;
+        }
+
+        waterData.amount += amount;
+
+        writeStorage("naol_water_data", waterData);
+
+        renderHydration();
+
+        showToast(amount + " ml added.");
     }
-  });
 
-  /* -------------------- ERROR HANDLING -------------------- */
+    bind("addWater", "click", function () {
+        const input = getById("waterAmount");
 
-  window.addEventListener("error", (event) => {
-    console.error("Naol Health Scanner error:", event.message);
-  });
+        if (!input) {
+            showToast("Water amount input not found.", "error");
+            return;
+        }
 
-  window.addEventListener("unhandledrejection", (event) => {
-    console.error("Naol Health Scanner async error:", event.reason);
-  });
+        const amount = Number(input.value);
 
-  /* -------------------- INITIALIZE APP -------------------- */
+        if (!amount || amount <= 0) {
+            showToast("Enter a positive water amount.", "warning");
+            return;
+        }
 
-  function initializeApp() {
-    applyTheme();
-    loadSettingsIntoForm();
+        addWater(amount);
+        input.value = "";
+    });
 
-    renderWellnessQuestions();
-    renderCaptureGallery();
-    renderMoodHistory();
-    renderSleepHistory();
+    bind("addWater500", "click", function () {
+        addWater(500);
+    });
 
-    updateDashboard();
-    updateBreathingDisplay();
-    updateScanProgress();
-    updateCameraButtons();
+    bind("resetWater", "click", function () {
+        if (!window.confirm("Reset today's water tracker?")) {
+            return;
+        }
 
-    init3DViewer();
+        waterData.amount = 0;
 
-    console.info(
-      "Naol Health Scanner 3D initialized. This application is for educational wellness tracking, not medical diagnosis."
+        writeStorage("naol_water_data", waterData);
+
+        renderHydration();
+
+        showToast("Water tracker reset.");
+    });
+
+    bind("saveWaterGoal", "click", function () {
+        const input = getById("waterGoal");
+
+        if (!input) {
+            return;
+        }
+
+        const goal = Number(input.value);
+
+        if (!Number.isFinite(goal) || goal < 100 || goal > 10000) {
+            showToast(
+                "Choose a goal between 100 and 10000 ml.",
+                "warning"
+            );
+
+            return;
+        }
+
+        waterData.goal = Math.round(goal);
+
+        writeStorage("naol_water_data", waterData);
+
+        renderHydration();
+
+        showToast("Daily water goal saved.");
+    });
+
+    renderHydration();
+
+
+    /* ========================================================
+       11. MOOD AND SLEEP DIARY
+       ======================================================== */
+
+    function renderDiaryHistory() {
+        const container = getById("diaryHistory");
+
+        if (!container) {
+            return;
+        }
+
+        if (!diaryHistory.length) {
+            container.innerHTML =
+                '<p class="empty-state">No diary entries yet.</p>';
+            return;
+        }
+
+        container.innerHTML = diaryHistory
+            .slice(0, 30)
+            .map(function (entry) {
+                return `
+                    <article class="diary-entry"
+                             style="padding:12px;margin-bottom:10px;
+                                    border-radius:10px">
+
+                        <strong>${escapeHTML(entry.date)}</strong>
+
+                        <p>Mood: ${escapeHTML(entry.mood)}</p>
+
+                        <p>Sleep: ${escapeHTML(entry.sleep)} hours</p>
+
+                        <p>${escapeHTML(entry.notes || "")}</p>
+                    </article>
+                `;
+            }).join("");
+    }
+
+    bind("diaryForm", "submit", function (event, form) {
+        event.preventDefault();
+
+        const formData = new FormData(form);
+
+        const dateValue =
+            String(formData.get("diaryDate") ||
+                getById("diaryDate")?.value ||
+                new Date().toISOString().slice(0, 10));
+
+        const moodValue =
+            String(formData.get("diaryMood") ||
+                getById("diaryMood")?.value ||
+                "Okay");
+
+        const sleepValue =
+            Number(formData.get("sleepHours") ||
+                getById("sleepHours")?.value ||
+                0);
+
+        const notesValue =
+            String(formData.get("diaryNotes") ||
+                getById("diaryNotes")?.value ||
+                "");
+
+        if (!Number.isFinite(sleepValue) ||
+            sleepValue < 0 ||
+            sleepValue > 24) {
+
+            showToast("Sleep hours must be between 0 and 24.", "error");
+            return;
+        }
+
+        const entry = {
+            id: Date.now(),
+            date: dateValue,
+            mood: moodValue,
+            sleep: sleepValue,
+            notes: notesValue.slice(0, 2000),
+            savedAt: new Date().toISOString()
+        };
+
+        diaryHistory.unshift(entry);
+        diaryHistory = diaryHistory.slice(0, 200);
+
+        writeStorage("naol_diary_history", diaryHistory);
+
+        renderDiaryHistory();
+
+        showToast("Diary entry saved.");
+
+        form.reset();
+
+        const dateInput = getById("diaryDate");
+
+        if (dateInput) {
+            dateInput.value = new Date().toISOString().slice(0, 10);
+        }
+    });
+
+    bind("exportDiary", "click", function () {
+        if (!diaryHistory.length) {
+            showToast("No diary entries to export.", "warning");
+            return;
+        }
+
+        const csvRows = [
+            ["Date", "Mood", "Sleep Hours", "Notes"]
+        ];
+
+        diaryHistory.forEach(function (entry) {
+            csvRows.push([
+                entry.date,
+                entry.mood,
+                entry.sleep,
+                entry.notes || ""
+            ]);
+        });
+
+        const csv = csvRows.map(function (row) {
+            return row.map(function (cell) {
+                return '"' +
+                    String(cell ?? "").replace(/"/g, '""') +
+                    '"';
+            }).join(",");
+        }).join("\r\n");
+
+        downloadText(
+            "naol-diary.csv",
+            "\uFEFF" + csv,
+            "text/csv;charset=utf-8"
+        );
+    });
+
+    const diaryDateInput = getById("diaryDate");
+
+    if (diaryDateInput && !diaryDateInput.value) {
+        diaryDateInput.value = new Date().toISOString().slice(0, 10);
+    }
+
+    renderDiaryHistory();
+
+
+    /* ========================================================
+       12. REPORTS
+       ======================================================== */
+
+    function renderReportSummary() {
+        const container = getById("reportOutput");
+
+        if (!container) {
+            return;
+        }
+
+        const latestWellness = wellnessHistory[0];
+        const today = new Date().toDateString();
+
+        const todaysDiary = diaryHistory.filter(function (entry) {
+            return entry.date === new Date().toISOString().slice(0, 10);
+        });
+
+        container.innerHTML = `
+            <div class="report-summary">
+                <h3>Wellness Summary</h3>
+
+                <p><strong>Report date:</strong>
+                    ${escapeHTML(formatDate())}</p>
+
+                <p><strong>Wellness entries:</strong>
+                    ${wellnessHistory.length}</p>
+
+                <p><strong>Diary entries:</strong>
+                    ${diaryHistory.length}</p>
+
+                <p><strong>Today's diary entries:</strong>
+                    ${todaysDiary.length}</p>
+
+                <p><strong>Today's recorded water:</strong>
+                    ${Number(waterData.amount) || 0} ml</p>
+
+                <p><strong>Water goal:</strong>
+                    ${Number(waterData.goal) || 2000} ml</p>
+
+                <p><strong>Saved photos:</strong>
+                    ${gallery.length}</p>
+
+                ${
+                    latestWellness
+                        ? `
+                            <hr>
+
+                            <h4>Latest Wellness Entry</h4>
+
+                            <p>Energy: ${escapeHTML(latestWellness.energy)}/5</p>
+
+                            <p>Sleep: ${escapeHTML(latestWellness.sleep)} hours</p>
+
+                            <p>Mood: ${escapeHTML(latestWellness.mood)}</p>
+
+                            <p>Activity: ${escapeHTML(latestWellness.activity)}</p>
+                        `
+                        : "<p>No wellness entries have been saved yet.</p>"
+                }
+
+                <hr>
+
+                <p>
+                    This report summarizes user-entered information.
+                    It is not a medical examination or diagnosis.
+                </p>
+            </div>
+        `;
+    }
+
+    bind("generateReport", "click", function () {
+        renderReportSummary();
+        showToast("Report generated.");
+    });
+
+    bind("downloadReport", "click", function () {
+        const report = {
+            title: "Naol Health Scanner 3D - Wellness Report",
+            generatedAt: new Date().toISOString(),
+            disclaimer:
+                "This report is based on user-entered information and is not a medical diagnosis.",
+            water: waterData,
+            wellnessHistory,
+            diaryHistory,
+            photoCount: gallery.length
+        };
+
+        downloadText(
+            "naol-wellness-report.json",
+            JSON.stringify(report, null, 2),
+            "application/json"
+        );
+    });
+
+    renderReportSummary();
+
+
+    /* ========================================================
+       13. CLEAR LOCAL DATA
+       ======================================================== */
+
+    bind("clearLocalData", "click", function () {
+        const confirmed = window.confirm(
+            "Delete saved wellness entries, diary records, photos, " +
+            "and water data from this browser? This cannot be undone."
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        gallery = [];
+        wellnessHistory = [];
+        diaryHistory = [];
+
+        waterData = {
+            date: new Date().toDateString(),
+            amount: 0,
+            goal: 2000
+        };
+
+        removeStorage("naol_gallery");
+        removeStorage("naol_wellness_history");
+        removeStorage("naol_diary_history");
+
+        writeStorage("naol_water_data", waterData);
+
+        renderGallery();
+        renderWellnessHistory();
+        renderDiaryHistory();
+        renderHydration();
+        renderReportSummary();
+
+        showToast("Saved local data cleared.");
+    });
+
+
+    /* ========================================================
+       14. OPTIONAL BUTTONS AND FORM SAFETY
+       ======================================================== */
+
+    // Prevent accidental form submissions for buttons that perform actions.
+    $$("button").forEach(function (button) {
+        if (!button.hasAttribute("type")) {
+            button.setAttribute("type", "button");
+        }
+    });
+
+    // Make data-region controls accessible.
+    $$("[data-region]").forEach(function (button) {
+        if (!button.hasAttribute("type")) {
+            button.setAttribute("type", "button");
+        }
+    });
+
+    // Keep the footer year current.
+    setText("footerYear", String(new Date().getFullYear()));
+
+    // Initialize the initial camera status.
+    updateCameraStatus();
+
+    // The camera should not start automatically.
+    // The user must click Start Camera and grant permission.
+
+    console.log(
+        "Naol Health Scanner 3D initialized successfully."
     );
-  }
 
-  initializeApp();
+    showToast("Naol Health Scanner 3D is ready.");
+
 });
